@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Configuración con secretos (en la EC2 vive en /etc/farmaexpress)
+*.env
+.env*

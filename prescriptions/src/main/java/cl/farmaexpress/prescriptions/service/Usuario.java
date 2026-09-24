@@ -4,6 +4,8 @@ import java.util.List;
 
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import cl.farmaexpress.prescriptions.config.EntraJwtConfig;
+
 /**
  * Quién hace la petición, leído del JWT de Entra ID.
  * {@code id} es el {@code oid}: identificador único y estable de la persona en el tenant.
@@ -15,8 +17,11 @@ public record Usuario(String id, String email, String nombre, List<String> roles
 		String email = primero(jwt, "email", "preferred_username", "upn");
 		String nombre = primero(jwt, "name");
 		List<String> roles = jwt.getClaimAsStringList("roles");
+		// "admin", "Admin" u "ADMIN" son el mismo App Role.
+		List<String> normalizados = roles == null ? List.of()
+				: roles.stream().map(EntraJwtConfig::rolNormalizado).toList();
 		return new Usuario(oid != null ? oid : jwt.getSubject(), email,
-				nombre != null ? nombre : email, roles != null ? roles : List.of());
+				nombre != null ? nombre : email, normalizados);
 	}
 
 	/** Operadores y administradores ven y gestionan todas las recetas. */

@@ -35,15 +35,25 @@ if errorlevel 1 (
 echo MySQL: conexion OK
 
 :azure
-REM Login con Microsoft: el BFF usa el mismo tenant y App Registration que el frontend.
-REM Si no están definidas, se leen de ..\FRONTEND\.env (VITE_AZURE_TENANT_ID y VITE_AZURE_API_CLIENT_ID).
-if exist "..\FRONTEND\.env" (
-  for /f "usebackq tokens=1,* delims==" %%A in ("..\FRONTEND\.env") do (
-    if /i "%%A"=="VITE_AZURE_TENANT_ID" if not defined AZURE_TENANT_ID set "AZURE_TENANT_ID=%%B"
-    if /i "%%A"=="VITE_AZURE_API_CLIENT_ID" if not defined AZURE_API_CLIENT_ID set "AZURE_API_CLIENT_ID=%%B"
+REM Microsoft Entra ID: los 3 servicios validan el JWT con el mismo tenant y App Registration que el frontend.
+REM Si no están definidas, se leen del .env del frontend (carpeta vecina FRONTEND o frontend-farmaexpress).
+for %%F in ("..\FRONTEND\.env" "..\frontend-farmaexpress\.env") do (
+  if exist %%F (
+    for /f "usebackq tokens=1,* delims==" %%A in (%%F) do (
+      if /i "%%A"=="VITE_AZURE_TENANT_ID" if not defined AZURE_TENANT_ID set "AZURE_TENANT_ID=%%B"
+      if /i "%%A"=="VITE_AZURE_API_CLIENT_ID" if not defined AZURE_API_CLIENT_ID set "AZURE_API_CLIENT_ID=%%B"
+    )
   )
 )
-if defined AZURE_TENANT_ID (echo Login con Microsoft: activado) else (echo Login con Microsoft: sin configurar)
+if not defined AZURE_TENANT_ID (
+  echo.
+  echo  Faltan AZURE_TENANT_ID y AZURE_API_CLIENT_ID ^(tenant y App Registration de Entra ID^).
+  echo  Definelos antes de iniciar, por ejemplo en PowerShell:
+  echo    $env:AZURE_TENANT_ID="..."; $env:AZURE_API_CLIENT_ID="..."
+  echo.
+  exit /b 1
+)
+echo Entra ID: tenant %AZURE_TENANT_ID:~0,8%...
 
 start "FarmaExpress catalog :8081" cmd /k mvnw.cmd -pl catalog spring-boot:run %ARGS%
 start "FarmaExpress prescriptions :8082" cmd /k mvnw.cmd -pl prescriptions spring-boot:run %ARGS%

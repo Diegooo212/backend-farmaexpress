@@ -34,14 +34,17 @@ public class EntraDePrueba {
 
 	public static final String TENANT = "11111111-2222-3333-4444-555555555555";
 	public static final String API_CLIENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-	public static final String ISSUER = "https://" + TENANT + ".ciamlogin.com/" + TENANT + "/v2.0";
+	/** Emisor de tokens v2 de un tenant de Entra ID (el de los tokens de prueba). */
+	public static final String ISSUER = "https://login.microsoftonline.com/" + TENANT + "/v2.0";
+	/** Emisor de tokens v1 del mismo tenant (también se acepta). */
+	public static final String ISSUER_V1 = "https://sts.windows.net/" + TENANT + "/";
 	private static final KeyPair LLAVES = generarLlaves();
 
 	@Bean
 	@Primary
 	JwtDecoder jwtDecoderDePrueba() {
 		NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey((RSAPublicKey) LLAVES.getPublic()).build();
-		decoder.setJwtValidator(EntraJwtConfig.validador(ISSUER, API_CLIENT_ID));
+		decoder.setJwtValidator(EntraJwtConfig.validador(ISSUER + "," + ISSUER_V1, API_CLIENT_ID));
 		return decoder;
 	}
 

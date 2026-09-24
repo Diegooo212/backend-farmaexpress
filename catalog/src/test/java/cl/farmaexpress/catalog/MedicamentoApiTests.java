@@ -143,6 +143,14 @@ class MedicamentoApiTests {
 	}
 
 	@Test
+	void rolAdministradorDeLaAppRegistrationPuedeCrear() throws Exception {
+		// En la App Registration los roles se llaman "Administrador", "Operador" y "Cliente".
+		crearConToken(EntraDePrueba.token(Map.of("roles", List.of("Administrador")))).andExpect(status().isCreated());
+		crearConToken(EntraDePrueba.token(Map.of("roles", List.of("Operador")))).andExpect(status().isForbidden());
+		crearConToken(EntraDePrueba.token(Map.of("roles", List.of("Cliente")))).andExpect(status().isForbidden());
+	}
+
+	@Test
 	void jwtValidoSinRolAdminDa403() throws Exception {
 		crearConToken(EntraDePrueba.token(Map.of())).andExpect(status().isForbidden());
 	}
@@ -160,6 +168,14 @@ class MedicamentoApiTests {
 		crearConToken(token.substring(0, token.length() - 4) + "AAAA")
 			.andExpect(status().isUnauthorized())
 			.andExpect(header().string("WWW-Authenticate", containsString("invalid_token")));
+	}
+
+	@Test
+	void aceptaTokensV1DelMismoTenant() throws Exception {
+		// Si la App Registration emite tokens v1, el iss es https://sts.windows.net/<tenant>/ y aud = api://<client-id>.
+		crearConToken(EntraDePrueba.token(Map.of("roles", List.of("Administrador"),
+				"iss", EntraDePrueba.ISSUER_V1, "aud", List.of("api://" + EntraDePrueba.API_CLIENT_ID))))
+			.andExpect(status().isCreated());
 	}
 
 	@Test

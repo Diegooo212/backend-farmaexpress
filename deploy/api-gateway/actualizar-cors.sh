@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Actualiza el CORS del API Gateway con el dominio del frontend (por ejemplo, el de CloudFront,
+# que se conoce después de crear el API).
+# Uso en CloudShell:  API_ID=xxxx FRONTEND_ORIGIN=https://dxxxx.cloudfront.net bash actualizar-cors.sh
+set -euo pipefail
+: "${API_ID:?Define API_ID}"
+: "${FRONTEND_ORIGIN:?Define FRONTEND_ORIGIN, por ejemplo https://dxxxx.cloudfront.net}"
+
+aws apigatewayv2 update-api --api-id "$API_ID" --cors-configuration "$(cat <<JSON
+{
+  "AllowOrigins": ["$FRONTEND_ORIGIN", "http://localhost:5173"],
+  "AllowMethods": ["GET", "POST", "PUT", "OPTIONS"],
+  "AllowHeaders": ["authorization", "content-type"],
+  "ExposeHeaders": ["content-disposition", "www-authenticate"],
+  "MaxAge": 3600
+}
+JSON
+)" --query 'CorsConfiguration' --output json
+echo "CORS actualizado para $FRONTEND_ORIGIN"

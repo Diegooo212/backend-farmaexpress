@@ -208,6 +208,16 @@ class RecetaApiTests {
 	}
 
 	@Test
+	void operadorConRolEnMinusculaVeTodasYPuedeValidar() throws Exception {
+		long id = crearReceta();
+		String token = EntraDePrueba.token(java.util.Map.of("roles", List.of("operador"), "oid", "oid-operador"));
+		mvc.perform(get(BASE).header("Authorization", "Bearer " + token)).andExpect(jsonPath("$", hasSize(1)));
+		mvc.perform(put(BASE + "/" + id + "/status").header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"VALIDADA\"}"))
+			.andExpect(status().isOk());
+	}
+
+	@Test
 	void pacienteConJwtRealNoPuedeCambiarEstados() throws Exception {
 		long id = crearReceta();
 		String token = EntraDePrueba.token(java.util.Map.of());

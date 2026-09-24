@@ -5,6 +5,8 @@ import java.util.List;
 
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import cl.farmaexpress.bff.config.EntraJwtConfig;
+
 /** Quién hace la petición, leído del access token de Entra ID ya validado. */
 public record UsuarioActual(String oid, String email, String nombre, List<String> roles, List<String> scopes) {
 
@@ -13,6 +15,10 @@ public record UsuarioActual(String oid, String email, String nombre, List<String
 		String email = normalizar(primero(jwt, "email", "preferred_username", "upn"));
 		String nombre = primero(jwt, "name");
 		List<String> roles = jwt.getClaimAsStringList("roles");
+		if (roles != null) {
+			// "admin", "Admin" u "ADMIN" son el mismo App Role.
+			roles = roles.stream().map(EntraJwtConfig::rolNormalizado).toList();
+		}
 		String scp = jwt.getClaimAsString("scp");
 		return new UsuarioActual(
 				oid != null ? oid : jwt.getSubject(),
