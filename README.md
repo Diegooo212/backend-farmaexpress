@@ -3,7 +3,7 @@
 Backend de **FarmaExpress**, plataforma de dispensación y retiro de recetas médicas.
 Curso DSY1107 Desarrollo Cloud Native I (DuocUC).
 
-Tres microservicios **Spring Boot 4 (Java 21)** con **MySQL** (Amazon RDS en la nube). Van protegidos por
+Tres microservicios **Spring Boot 4 (Java 21)** con **MySQL** (en la nube: 3 instancias EC2, una para el BFF, una para catalog + prescriptions y una para MySQL). Van protegidos por
 **AWS API Gateway** y usan **Microsoft Entra ID** como IDaaS.
 
 ```
@@ -88,5 +88,5 @@ Son 57 pruebas y usan H2, así que no necesitan MySQL. Incluyen tokens firmados 
 
 ## Despliegue en AWS
 
-- EC2 + RDS + API Gateway: **[docs/DESPLIEGUE-AWS.md](docs/DESPLIEGUE-AWS.md)**
+- 3 EC2 (bff · microservicios · MySQL) y API Gateway: **[docs/DESPLIEGUE-AWS.md](docs/DESPLIEGUE-AWS.md)**
 - Guion de la presentación EP2: **[docs/PRESENTACION.md](docs/PRESENTACION.md)**

@@ -1,184 +1,213 @@
-# Despliegue en AWS Academy (Learner Lab)
-
-Arquitectura final:
+# Despliegue en AWS Academy (Learner Lab): 3 instancias EC2
 
 ```
-Navegador ──HTTPS──► CloudFront + S3 (frontend React + MSAL)
+Frontend (local o CloudFront)
+    │  Authorization: Bearer <access token de Microsoft Entra ID>
+    ▼
+[API Gateway: opcional, paso 6]
     │
-    │  Authorization: Bearer <access token de Entra ID>
     ▼
-API Gateway (HTTP API) ── autorizador JWT: firma, iss, aud, exp + scope access_as_user
-    │  HTTP :8080
-    ▼
-EC2 (Amazon Linux 2023) ── bff :8080 ──► catalog :8081 / prescriptions :8082   (valida el mismo JWT)
-    │  MySQL :3306
-    ▼
-Amazon RDS for MySQL ── farmaexpress_bff · farmaexpress_catalog · farmaexpress_prescriptions
+EC2 #1 farmaexpress-bff ── bff :8080 (IP elástica, única EC2 expuesta a Internet)
+    │  red privada de la VPC
+    ├──► EC2 #2 farmaexpress-microservicios ── catalog :8081 + prescriptions :8082
+    │
+    └──► EC2 #3 farmaexpress-db ── MySQL 8.4 :3306 ◄── también la usan catalog y prescriptions
+            farmaexpress_bff · farmaexpress_catalog · farmaexpress_prescriptions
 ```
 
-> En Learner Lab todo se crea en **us-east-1** y con el rol **LabRole** (no se pueden crear roles IAM).
-> Al terminar la sesión del lab las instancias se detienen: vuelve a iniciar el lab antes de la presentación.
+- **Autenticación en todas las capas:** los 3 microservicios validan el JWT de Entra ID (firma, `iss`, `aud`, vigencia, scope y rol).
+- **Entre instancias se usan IPs privadas.** No cambian aunque se detenga el lab.
+- **Solo el BFF necesita IP elástica,** porque es la única dirección que usa el frontend.
 
-Anota estos valores a medida que avances:
+> En Learner Lab todo va en **us-east-1**. Al terminar la sesión del lab las EC2 se detienen solas: antes de
+> usar la app (o presentar), inicia el lab y espera a que las 3 instancias estén *Running*. Los servicios
+> arrancan solos (systemd).
 
-| Dato | Dónde se obtiene |
+**Anota a medida que avances:**
+
+| Dato | Dónde |
 |---|---|
+| IP privada de `farmaexpress-db` | Paso 2 (EC2 → instancia → *Private IPv4 address*) |
+| IP privada de `farmaexpress-microservicios` | Paso 2 |
+| IP elástica de `farmaexpress-bff` | Paso 2 |
+| Contraseñas de MySQL (root y `farmaexpress`) | Paso 3 |
 | `AZURE_TENANT_ID`, `AZURE_API_CLIENT_ID` | `FRONTEND/.env` (`VITE_AZURE_TENANT_ID`, `VITE_AZURE_API_CLIENT_ID`) |
-| Endpoint de RDS | Paso 1 |
-| IP elástica de la EC2 | Paso 2 |
-| `API_ID` y URL del API Gateway | Paso 4 |
-| Dominio de CloudFront | Paso 5 (repo del frontend) |
 
 ---
 
-## 1. Base de datos: Amazon RDS for MySQL
+## 1. Security groups (EC2 → Security Groups → Create security group)
 
-Consola → **RDS → Create database**:
+Créalos **en este orden**, porque los últimos hacen referencia a los primeros. En todos, VPC = la *default*.
+
+| Nombre | Reglas de entrada (*Inbound rules*) |
+|---|---|
+| `farmaexpress-bff-sg` | **SSH 22** desde *My IP* · **Custom TCP 8080** desde *Anywhere-IPv4* (`0.0.0.0/0`) |
+| `farmaexpress-ms-sg` | **SSH 22** desde *My IP* · **Custom TCP 8081-8082** con origen el security group **`farmaexpress-bff-sg`** |
+| `farmaexpress-db-sg` | **SSH 22** desde *My IP* · **MYSQL/Aurora 3306** con origen **`farmaexpress-bff-sg`** · otra regla **MYSQL/Aurora 3306** con origen **`farmaexpress-ms-sg`** |
+
+Así, desde Internet solo se llega al puerto 8080 del BFF. Los microservicios solo aceptan al BFF, y MySQL solo acepta al BFF y a los microservicios.
+
+> Si usas EC2 Instance Connect y "My IP" te bloquea, cambia temporalmente la regla SSH a *Anywhere-IPv4*.
+
+## 2. Crear las 3 instancias (EC2 → Launch instance)
+
+Configuración común para las tres:
 
 | Campo | Valor |
 |---|---|
-| Creation method | Standard create |
-| Engine | MySQL 8.4 |
-| Templates | **Free tier** (o Dev/Test) |
-| DB instance identifier | `farmaexpress-db` |
-| Master username | `admin` |
-| Master password | una contraseña segura (anótala) |
-| Instance class | `db.t3.micro` o `db.t4g.micro` |
-| Storage | 20 GB gp3, sin autoscaling |
-| Public access | **No** |
-| VPC security group | Create new → `farmaexpress-rds-sg` |
-| Initial database name | *(vacío: cada microservicio crea la suya)* |
+| AMI | **Amazon Linux 2023** |
+| Instance type | **t3.small** |
+| Key pair | **vockey** |
+| Network settings → *Select existing security group* | el de la tabla de abajo |
+| Storage | 8 GB gp3 (por defecto) |
+| Advanced details → IAM instance profile | **LabInstanceProfile** |
 
-Cuando quede **Available**, copia el **Endpoint** (algo como `farmaexpress-db.xxxx.us-east-1.rds.amazonaws.com`).
-
-## 2. Servidor: EC2 con los 3 microservicios
-
-Consola → **EC2 → Launch instance**:
-
-| Campo | Valor |
+| Name | Security group |
 |---|---|
-| Name | `farmaexpress-backend` |
-| AMI | Amazon Linux 2023 |
-| Instance type | **t3.medium** (3 JVM; con t3.small también funciona gracias al swap) |
-| Key pair | `vockey` (la del lab) |
-| Security group | Create → `farmaexpress-ec2-sg` con reglas de entrada: **SSH 22** desde *My IP* y **TCP 8080** desde *Anywhere* (API Gateway llega por Internet) |
-| Advanced → IAM instance profile | `LabInstanceProfile` |
+| `farmaexpress-db` | `farmaexpress-db-sg` |
+| `farmaexpress-microservicios` | `farmaexpress-ms-sg` |
+| `farmaexpress-bff` | `farmaexpress-bff-sg` |
 
-Después:
+Después: **EC2 → Elastic IPs → Allocate Elastic IP address → Allocate**, luego *Actions → Associate* a `farmaexpress-bff`.
+Anota esa IP y las **IP privadas** de `farmaexpress-db` y `farmaexpress-microservicios`.
 
-1. **IP elástica** (para que la IP no cambie al reiniciar el lab): EC2 → Elastic IPs → *Allocate* → *Associate* a la instancia. Anota la IP.
-2. **Permitir que la EC2 hable con RDS**: RDS → tu base → *VPC security groups* → `farmaexpress-rds-sg` → *Edit inbound rules* → **MySQL/Aurora 3306** con origen el security group **`farmaexpress-ec2-sg`**.
+**Conectarse a una instancia:** selecciónala → **Connect → EC2 Instance Connect → Connect**. Se abre una terminal en el navegador.
 
-> El puerto 8080 queda abierto a Internet porque API Gateway (HTTP API) llama a la EC2 por su IP pública.
-> Aun así, el BFF valida el mismo JWT de Entra ID: llamarlo directo sin token responde 401.
-> Los puertos 8081 y 8082 no se abren; solo el BFF los usa, dentro de la misma instancia.
+## 3. EC2 `farmaexpress-db`: MySQL 8.4
 
-## 3. Instalar y levantar el backend en la EC2
+```bash
+sudo dnf install -y git
+git clone https://github.com/<tu-usuario>/backend-farmaexpress.git
+sudo bash backend-farmaexpress/deploy/ec2/instalar-mysql.sh
+```
 
-Conéctate: EC2 → instancia → **Connect → EC2 Instance Connect** (o `ssh -i labsuser.pem ec2-user@<IP>`).
+El script pide dos contraseñas. MySQL exige 8+ caracteres con mayúscula, minúscula, número y símbolo, **sin comillas**:
+
+- **root:** para administrar MySQL.
+- **farmaexpress:** el usuario que usan los microservicios. Solo tiene permisos sobre las bases `farmaexpress_*`.
+
+Al final muestra la **IP privada** de esta EC2, que es el `DB_HOST` de las otras dos.
+
+## 4. EC2 `farmaexpress-microservicios`: catalog + prescriptions
 
 ```bash
 sudo dnf install -y git
 git clone https://github.com/<tu-usuario>/backend-farmaexpress.git
 cd backend-farmaexpress
-sudo bash deploy/ec2/instalar-ec2.sh        # Java 21, swap, servicios systemd
+sudo bash deploy/ec2/instalar-ec2.sh microservicios
 sudo nano /etc/farmaexpress/farmaexpress.env
 ```
 
-Completa en `farmaexpress.env`:
+Completa (guarda con `Ctrl+O`, `Enter`, y sal con `Ctrl+X`):
 
 ```properties
-DB_HOST=<endpoint de RDS>
-DB_USER=admin
-DB_PASSWORD=<contraseña de RDS>
+DB_HOST=<IP privada de farmaexpress-db>
+DB_USER=farmaexpress
+DB_PASSWORD=<contraseña del usuario farmaexpress>
 AZURE_TENANT_ID=<tenant id>
 AZURE_API_CLIENT_ID=<client id de la API>
 ```
-
-Compila y levanta (la primera vez Flyway crea las 3 bases, las tablas y los 6 medicamentos iniciales):
 
 ```bash
 bash deploy/ec2/desplegar.sh
 ```
 
-Comprueba:
+La primera compilación tarda unos minutos. Al final debe decir `catalog :8081 UP` y `prescriptions :8082 UP`.
+
+## 5. EC2 `farmaexpress-bff`
 
 ```bash
-curl http://localhost:8080/actuator/health                # {"status":"UP"}
-curl http://localhost:8080/api/bff/catalog/medicamentos    # JSON con 6 medicamentos
-curl -i http://localhost:8080/api/bff/cart                 # 401 (falta el JWT)
-sudo journalctl -u farmaexpress-bff -f                     # logs en vivo
+sudo dnf install -y git
+git clone https://github.com/<tu-usuario>/backend-farmaexpress.git
+cd backend-farmaexpress
+sudo bash deploy/ec2/instalar-ec2.sh bff
+sudo nano /etc/farmaexpress/farmaexpress.env
 ```
 
-Para ver la base de RDS desde la EC2: `mysql -h <endpoint> -u admin -p`.
-
-Cada vez que subas cambios al repo: `bash deploy/ec2/desplegar.sh`.
-
-## 4. API Manager: AWS API Gateway (HTTP API)
-
-Abre **AWS CloudShell** (ícono `>_` arriba a la derecha de la consola) y sube la carpeta `deploy/api-gateway`
-(o clona el repo):
+```properties
+DB_HOST=<IP privada de farmaexpress-db>
+DB_USER=farmaexpress
+DB_PASSWORD=<contraseña del usuario farmaexpress>
+AZURE_TENANT_ID=<tenant id>
+AZURE_API_CLIENT_ID=<client id de la API>
+CATALOG_URL=http://<IP privada de farmaexpress-microservicios>:8081
+PRESCRIPTIONS_URL=http://<IP privada de farmaexpress-microservicios>:8082
+CORS_ORIGINS=http://localhost:5173
+```
 
 ```bash
+bash deploy/ec2/desplegar.sh
+```
+
+**Comprobar desde tu PC** (PowerShell):
+
+```powershell
+curl.exe http://<IP elástica del BFF>:8080/api/bff/catalog/medicamentos   # JSON con 6 medicamentos
+curl.exe -i http://<IP elástica del BFF>:8080/api/bff/cart                # 401 (falta el JWT)
+```
+
+## 6. Probar con el frontend local
+
+En `FRONTEND/.env` cambia solo la URL de la API:
+
+```properties
+VITE_API_BASE_URL=http://<IP elástica del BFF>:8080
+```
+
+Reinicia `npm run dev` (Vite lee el `.env` al arrancar) y abre http://localhost:5173.
+El login con Microsoft sigue igual (la Redirect URI es `http://localhost:5173`).
+Prueba: catálogo, carrito, compra, enviar receta con foto y, con la cuenta de Operador o Administrador, el panel de farmacia.
+
+## 7. (Opcional) API Gateway delante del BFF
+
+```bash
+# En AWS CloudShell
 git clone https://github.com/<tu-usuario>/backend-farmaexpress.git
 cd backend-farmaexpress/deploy/api-gateway
-export EC2_HOST=<IP elástica>
+export EC2_HOST=<IP elástica del BFF>
 export AZURE_TENANT_ID=<tenant id>
 export AZURE_API_CLIENT_ID=<client id de la API>
-export FRONTEND_ORIGIN=http://localhost:5173     # se cambia en el paso 6
+export AZURE_ISSUER=https://sts.windows.net/<tenant id>/     # claim "iss" de tus tokens (v1)
+export FRONTEND_ORIGIN=http://localhost:5173
 bash crear-api-gateway.sh
 ```
 
 El script crea:
 
-- **14 rutas**, una por endpoint del BFF, cada una con integración `HTTP_PROXY` hacia `http://<IP>:8080/...`.
-- **Autorizador JWT `entra-id-jwt`**:
-  - issuer `https://login.microsoftonline.com/<tenant>/v2.0` (debe ser igual al claim `iss` de tus tokens; si ves `https://sts.windows.net/<tenant>/`, exporta `AZURE_ISSUER` con ese valor antes de ejecutar el script);
-  - audience `<client id>` y `api://<client id>`;
-  - identity source `$request.header.Authorization`.
-- **Rutas protegidas:** usan el autorizador y exigen el scope `access_as_user`.
-  - Sin token, o con token inválido o vencido: **401**.
-  - Con un token que no trae ese scope: **403**.
-- **Rutas públicas:** `GET` del catálogo.
-- **CORS** y el stage `$default` con auto-deploy.
+- **14 rutas** con integración `HTTP_PROXY` hacia `http://<IP del BFF>:8080/...`.
+- El **autorizador JWT `entra-id-jwt`**: valida issuer y audience (`<client id>` y `api://<client id>`) y exige el scope `access_as_user`.
+- El **CORS** y el stage `$default`.
 
-Anota `API_ID` y la URL `https://<api-id>.execute-api.us-east-1.amazonaws.com`.
+Después:
+
+- En el frontend usa `VITE_API_BASE_URL=<URL del API Gateway>`.
+- Prueba las rutas con y sin token usando `probar-api.sh`.
 
 > **Roles:** el autorizador JWT de API Gateway valida firma, emisor, audiencia, vigencia y **scopes**.
-> Los **App Roles** (`Administrador`, `Operador`, `Cliente`) viajan en el claim `roles`, y los valida el BFF (y cada microservicio).
-> Por eso, un Cliente que intenta crear un medicamento pasa el Gateway (tiene el scope), pero el BFF responde **403**.
+> Los **App Roles** (`Administrador`/`Admin`, `Operador`, `Cliente`) viajan en el claim `roles`, y los valida el BFF (y cada microservicio).
 
-Consola para mostrarlo en la presentación: **API Gateway → farmaexpress-api → Routes / Authorization / CORS / Integrations**.
+Para el frontend en la nube (S3 + CloudFront) ver `docs/DESPLIEGUE-FRONTEND.md` del repo del frontend. Después:
 
-## 5. Frontend: S3 + CloudFront
+- CORS: `API_ID=<id> FRONTEND_ORIGIN=https://dxxxx.cloudfront.net bash actualizar-cors.sh`
+- Entra ID: agrega `https://dxxxx.cloudfront.net` como *Redirect URI* de la plataforma **SPA**.
 
-Ver `docs/DESPLIEGUE-FRONTEND.md` en el repo del frontend (script `deploy/publicar-cloudfront.sh`).
-Al terminar tendrás un dominio `https://dxxxx.cloudfront.net`.
+## Operación diaria
 
-## 6. Conectar todo
-
-1. **CORS del API Gateway con el dominio de CloudFront** (en CloudShell):
-
-   ```bash
-   API_ID=<api id> FRONTEND_ORIGIN=https://dxxxx.cloudfront.net bash actualizar-cors.sh
-   ```
-
-2. **Entra ID**: agrega `https://dxxxx.cloudfront.net` como *Redirect URI* de la plataforma **SPA** (ver `docs/ENTRA-ID.md` del frontend).
-
-3. Prueba las rutas con y sin token (evidencia para la presentación):
-
-   ```bash
-   export API=https://<api-id>.execute-api.us-east-1.amazonaws.com
-   export TOKEN=<access token: F12 → Network → header Authorization de una llamada a /api/bff/...>
-   bash probar-api.sh
-   ```
+| Qué | Comando (en la EC2 que corresponda) |
+|---|---|
+| Ver logs en vivo | `sudo journalctl -u farmaexpress-bff -f` (o `-catalog`, `-prescriptions`) |
+| Estado de un servicio | `sudo systemctl status farmaexpress-bff` |
+| Subir una versión nueva | `cd backend-farmaexpress && bash deploy/ec2/desplegar.sh` |
+| Entrar a MySQL (EC2 db) | `mysql -u root -p` → `SHOW DATABASES;` |
+| Ver MySQL desde tu PC con Workbench | túnel SSH: `ssh -i labsuser.pem -L 3307:<IP privada db>:3306 ec2-user@<IP elástica BFF>` y en Workbench conecta a `127.0.0.1:3307` |
 
 ## Si algo falla
 
 | Síntoma | Causa probable |
 |---|---|
-| `desplegar.sh` dice que un puerto no responde | `sudo journalctl -u farmaexpress-bff -n 80`. Si dice `Communications link failure`, revisa el security group de RDS (paso 2.2) y `DB_HOST`. |
-| API Gateway responde `503 Service Unavailable` | La EC2 está apagada o cambió de IP → inicia el lab, o `actualizar-host-backend.sh` con la IP nueva. |
-| `401` con un token recién obtenido | El `issuer` o `audience` del autorizador no calza con el token. Compara con los claims `iss` y `aud` del token (F12 → Network → header `Authorization` → https://jwt.ms). |
-| Error de CORS en el navegador | Falta el dominio de CloudFront en el CORS del API Gateway (paso 6.1). |
-| `AADSTS50011` al iniciar sesión | Falta la Redirect URI de CloudFront en la App Registration (paso 6.2). |
+| `desplegar.sh`: un servicio no responde | `sudo journalctl -u farmaexpress-<servicio> -n 80 --no-pager`. Si dice `Communications link failure`, revisa `DB_HOST` y el security group de la EC2 db (paso 1). Si dice `Access denied`, revisa `DB_USER`/`DB_PASSWORD`. |
+| El BFF responde `503` ("servicio no disponible") | El BFF no llega a los microservicios: revisa `CATALOG_URL`/`PRESCRIPTIONS_URL` (IP **privada**) y la regla 8081-8082 de `farmaexpress-ms-sg`. |
+| `curl` al BFF desde tu PC no responde | La instancia está detenida (inicia el lab), falta la regla 8080 en `farmaexpress-bff-sg`, o la IP elástica no está asociada. |
+| Error de CORS en el navegador | `CORS_ORIGINS` del BFF no incluye el origen del frontend (`http://localhost:5173`). Corrige y ejecuta `sudo systemctl restart farmaexpress-bff`. |
+| `401` con sesión iniciada | `AZURE_TENANT_ID`/`AZURE_API_CLIENT_ID` mal escritos en la EC2. Compara con el `iss` y el `aud` del token (F12 → Network → header `Authorization` → https://jwt.ms). |
+| `desplegar.sh`: `git pull` falla | El repo en GitHub es privado o no subiste los últimos cambios. |
