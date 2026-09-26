@@ -9,7 +9,7 @@ set -euo pipefail
 aws apigatewayv2 update-api --api-id "$API_ID" --cors-configuration "$(cat <<JSON
 {
   "AllowOrigins": ["$FRONTEND_ORIGIN", "http://localhost:5173"],
-  "AllowMethods": ["GET", "POST", "PUT", "OPTIONS"],
+  "AllowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   "AllowHeaders": ["authorization", "content-type"],
   "ExposeHeaders": ["content-disposition", "www-authenticate"],
   "MaxAge": 3600

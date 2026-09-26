@@ -29,7 +29,7 @@ echo "==> Creando HTTP API '$NOMBRE' con CORS para $FRONTEND_ORIGIN"
 CORS=$(cat <<JSON
 {
   "AllowOrigins": ["$FRONTEND_ORIGIN", "http://localhost:5173"],
-  "AllowMethods": ["GET", "POST", "PUT", "OPTIONS"],
+  "AllowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   "AllowHeaders": ["authorization", "content-type"],
   "ExposeHeaders": ["content-disposition", "www-authenticate"],
   "MaxAge": 3600
@@ -62,7 +62,7 @@ ruta() {
     aws apigatewayv2 create-route --api-id "$API_ID" --route-key "$metodo $path" \
       --target "integrations/$integracion" >/dev/null
   fi
-  printf '    %-4s %-45s %s\n' "$metodo" "$path" "$acceso"
+  printf '    %-6s %-45s %s\n' "$metodo" "$path" "$acceso"
 }
 
 echo "==> Rutas (JWT + scope '$SCOPE' en las protegidas; los roles Admin/Operador los valida el BFF)"
@@ -70,6 +70,7 @@ ruta GET  /api/bff/catalog/medicamentos                publica
 ruta GET  /api/bff/catalog/medicamentos/{id}           publica
 ruta POST /api/bff/catalog/medicamentos                protegida
 ruta PUT  /api/bff/catalog/medicamentos/{id}           protegida
+ruta DELETE /api/bff/catalog/medicamentos/{id}         protegida
 ruta GET  /api/bff/auth/me                             protegida
 ruta GET  /api/bff/cart                                protegida
 ruta PUT  /api/bff/cart                                protegida

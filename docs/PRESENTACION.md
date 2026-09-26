@@ -56,7 +56,7 @@ Frase clave: *"los roles y el scope que definí aquí son los que después valid
 
 En la consola de API Gateway, **farmaexpress-api**:
 
-1. **Routes**: las 14 rutas. Las públicas (GET catálogo) no llevan autorizador. Las demás llevan **JWT** + scope `access_as_user`.
+1. **Routes**: las 15 rutas. Las públicas (GET catálogo) no llevan autorizador. Las demás llevan **JWT** + scope `access_as_user`.
 2. **Authorization**: el autorizador `entra-id-jwt`, con:
    - issuer `https://login.microsoftonline.com/<tenant>/v2.0`;
    - audience = client id;

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -106,6 +107,17 @@ class MedicamentoApiTests {
 			.andExpect(jsonPath("$.stock").value(50));
 		mvc.perform(put(BASE + "/999").with(como("Admin")).contentType(MediaType.APPLICATION_JSON).content(body))
 			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void eliminarEsSoloParaAdminYQuitaElProducto() throws Exception {
+		mvc.perform(delete(BASE + "/6")).andExpect(status().isUnauthorized());
+		mvc.perform(delete(BASE + "/6").with(como("Cliente"))).andExpect(status().isForbidden());
+		mvc.perform(delete(BASE + "/6").with(como("Admin"))).andExpect(status().isNoContent());
+
+		mvc.perform(get(BASE + "/6")).andExpect(status().isNotFound());
+		mvc.perform(get(BASE)).andExpect(jsonPath("$", hasSize(5)));
+		mvc.perform(delete(BASE + "/6").with(como("Admin"))).andExpect(status().isNotFound());
 	}
 
 	@Test

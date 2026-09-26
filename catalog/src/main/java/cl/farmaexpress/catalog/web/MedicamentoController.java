@@ -6,6 +6,7 @@ import java.util.List;
 import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,6 +49,13 @@ public class MedicamentoController {
 	@PutMapping("/{id}")
 	public MedicamentoResponse actualizar(@PathVariable Long id, @Valid @RequestBody MedicamentoRequest request) {
 		return service.actualizar(id, request);
+	}
+
+	/** Solo Admin (ver SecurityConfig). Responde 204 sin cuerpo; 404 si no existe. */
+	@DeleteMapping("/{id}")
+	public ResponseEntity<Void> eliminar(@PathVariable Long id) {
+		service.eliminar(id);
+		return ResponseEntity.noContent().build();
 	}
 
 	@PostMapping("/descontar-stock")

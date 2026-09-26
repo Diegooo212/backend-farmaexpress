@@ -83,6 +83,15 @@ public class MedicamentoService {
 		return cantidades.keySet().stream().map(medicamentos::get).map(MedicamentoResponse::from).toList();
 	}
 
+	/**
+	 * Elimina el medicamento del catálogo. Los pedidos ya hechos no se ven afectados: guardan una
+	 * copia del nombre y el precio. Si estaba en algún carrito, el BFF lo quita al leer el carrito.
+	 */
+	@Transactional
+	public void eliminar(Long id) {
+		repository.delete(buscar(id));
+	}
+
 	private Medicamento buscar(Long id) {
 		return repository.findById(id)
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe el medicamento " + id + "."));

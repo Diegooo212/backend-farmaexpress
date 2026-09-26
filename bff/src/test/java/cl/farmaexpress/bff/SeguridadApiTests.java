@@ -5,7 +5,9 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -143,6 +145,18 @@ class SeguridadApiTests {
 				.contentType(MediaType.APPLICATION_JSON).content(nuevo))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.id").value(7));
+	}
+
+	@Test
+	void eliminarProductoEsSoloParaAdmin() throws Exception {
+		given(catalog.reenviar(eq(HttpMethod.DELETE), eq("/6"), isNull(), anyString()))
+			.willReturn(ResponseEntity.noContent().build());
+
+		mvc.perform(delete("/api/bff/catalog/medicamentos/6")).andExpect(status().isUnauthorized());
+		mvc.perform(conToken(delete("/api/bff/catalog/medicamentos/6"), Map.of("roles", List.of("Operador"))))
+			.andExpect(status().isForbidden());
+		mvc.perform(conToken(delete("/api/bff/catalog/medicamentos/6"), Map.of("roles", List.of("Administrador"))))
+			.andExpect(status().isNoContent());
 	}
 
 	@Test

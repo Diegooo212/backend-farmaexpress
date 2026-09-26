@@ -29,7 +29,11 @@ fi
 echo "==> Instalando MySQL 8.4 Community (repositorio oficial de Oracle)"
 if ! rpm -q mysql-community-server >/dev/null 2>&1; then
   rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2023
-  dnf install -y https://repo.mysql.com/mysql84-community-release-el9.rpm >/dev/null
+  rpm -q mysql84-community-release >/dev/null 2>&1 \
+    || dnf install -y https://repo.mysql.com/mysql84-community-release-el9.rpm >/dev/null
+  # Amazon Linux 2023 informa su versión como "2023.x", pero MySQL publica los paquetes
+  # como EL9 (compatibles): sin este cambio el repositorio responde 404.
+  sed -i 's/\$releasever/9/g' /etc/yum.repos.d/mysql-community*.repo
   dnf install -y mysql-community-server >/dev/null
 fi
 

@@ -174,7 +174,7 @@ bash crear-api-gateway.sh
 
 El script crea:
 
-- **14 rutas** con integración `HTTP_PROXY` hacia `http://<IP del BFF>:8080/...`.
+- **15 rutas** con integración `HTTP_PROXY` hacia `http://<IP del BFF>:8080/...`.
 - El **autorizador JWT `entra-id-jwt`**: valida issuer y audience (`<client id>` y `api://<client id>`) y exige el scope `access_as_user`.
 - El **CORS** y el stage `$default`.
 
