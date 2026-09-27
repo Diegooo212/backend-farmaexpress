@@ -1,7 +1,7 @@
 # Despliegue en AWS Academy (Learner Lab): 3 instancias EC2
 
 ```
-Frontend (local o CloudFront)
+Frontend (local o AWS Amplify, HTTPS)
     │  Authorization: Bearer <access token de Microsoft Entra ID>
     ▼
 [API Gateway: opcional, paso 6]
@@ -186,10 +186,11 @@ Después:
 > **Roles:** el autorizador JWT de API Gateway valida firma, emisor, audiencia, vigencia y **scopes**.
 > Los **App Roles** (`Administrador`/`Admin`, `Operador`, `Cliente`) viajan en el claim `roles`, y los valida el BFF (y cada microservicio).
 
-Para el frontend en la nube (S3 + CloudFront) ver `docs/DESPLIEGUE-FRONTEND.md` del repo del frontend. Después:
+Para el frontend en la nube ver `docs/DESPLIEGUE-FRONTEND.md` del repo del frontend. En AWS Academy CloudFront está bloqueado (`AccessDenied` en `CreateDistribution`), así que se publica en **AWS Amplify Hosting** (`deploy/publicar-amplify.sh`, HTTPS en `https://main.<id>.amplifyapp.com`). Después, con ese dominio:
 
-- CORS: `API_ID=<id> FRONTEND_ORIGIN=https://dxxxx.cloudfront.net bash actualizar-cors.sh`
-- Entra ID: agrega `https://dxxxx.cloudfront.net` como *Redirect URI* de la plataforma **SPA**.
+- CORS del API Gateway: `API_ID=<id> FRONTEND_ORIGIN=https://main.<id>.amplifyapp.com bash actualizar-cors.sh`
+- CORS del BFF: en la EC2 `farmaexpress-bff`, agrega el dominio a `CORS_ORIGINS` (separado por coma) en `/etc/farmaexpress/farmaexpress.env` y `sudo systemctl restart farmaexpress-bff`. Es necesario porque API Gateway reenvía el header `Origin` y el BFF responde `403 Invalid CORS request` a orígenes que no conoce.
+- Entra ID: agrega el dominio como *Redirect URI* de la plataforma **SPA**.
 
 ## Operación diaria
 
