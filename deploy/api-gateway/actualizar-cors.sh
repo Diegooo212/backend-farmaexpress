@@ -6,9 +6,12 @@ set -euo pipefail
 : "${API_ID:?Define API_ID}"
 : "${FRONTEND_ORIGIN:?Define FRONTEND_ORIGIN, por ejemplo https://dxxxx.cloudfront.net}"
 
+# localhost:5173 siempre queda permitido (pruebas locales); sin repetirlo, porque AWS rechaza duplicados.
+ORIGENES="\"http://localhost:5173\""
+[ "$FRONTEND_ORIGIN" != "http://localhost:5173" ] && ORIGENES="\"$FRONTEND_ORIGIN\", $ORIGENES"
 aws apigatewayv2 update-api --api-id "$API_ID" --cors-configuration "$(cat <<JSON
 {
-  "AllowOrigins": ["$FRONTEND_ORIGIN", "http://localhost:5173"],
+  "AllowOrigins": [$ORIGENES],
   "AllowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   "AllowHeaders": ["authorization", "content-type"],
   "ExposeHeaders": ["content-disposition", "www-authenticate"],

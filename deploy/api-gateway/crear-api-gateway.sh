@@ -25,10 +25,13 @@ BACKEND="http://${EC2_HOST}:8080"
 #   Tenant External ID:       https://<tenant>.ciamlogin.com/<tenant>/v2.0
 ISSUER=${AZURE_ISSUER:-"https://login.microsoftonline.com/${AZURE_TENANT_ID}/v2.0"}
 
+# localhost:5173 siempre queda permitido (pruebas locales); sin repetirlo, porque AWS rechaza duplicados.
+ORIGENES="\"http://localhost:5173\""
+[ "$FRONTEND_ORIGIN" != "http://localhost:5173" ] && ORIGENES="\"$FRONTEND_ORIGIN\", $ORIGENES"
 echo "==> Creando HTTP API '$NOMBRE' con CORS para $FRONTEND_ORIGIN"
 CORS=$(cat <<JSON
 {
-  "AllowOrigins": ["$FRONTEND_ORIGIN", "http://localhost:5173"],
+  "AllowOrigins": [$ORIGENES],
   "AllowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   "AllowHeaders": ["authorization", "content-type"],
   "ExposeHeaders": ["content-disposition", "www-authenticate"],
