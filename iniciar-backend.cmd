@@ -1,5 +1,7 @@
 @echo off
-REM Levanta los 3 microservicios de FarmaExpress, cada uno en su propia ventana.
+REM Levanta los 6 microservicios de FarmaExpress, cada uno en su propia ventana.
+REM RabbitMQ (mensajes entre microservicios) va aparte, con Docker:  docker compose up -d rabbitmq
+REM Todo en contenedores (MySQL incluido):  docker compose up -d --build
 REM   .\iniciar-backend.cmd        -> usa MySQL (localhost:3306, usuario root). Pide la contraseña.
 REM   .\iniciar-backend.cmd h2     -> base en memoria, sin MySQL (los datos se pierden al cerrar)
 REM (En PowerShell hay que anteponer .\ ; en cmd funciona con o sin él.)
@@ -57,7 +59,11 @@ echo Entra ID: tenant %AZURE_TENANT_ID:~0,8%...
 
 start "FarmaExpress catalog :8081" cmd /k mvnw.cmd -pl catalog spring-boot:run %ARGS%
 start "FarmaExpress prescriptions :8082" cmd /k mvnw.cmd -pl prescriptions spring-boot:run %ARGS%
+start "FarmaExpress notifications :8083" cmd /k mvnw.cmd -pl notifications spring-boot:run %ARGS%
+start "FarmaExpress payments :8084" cmd /k mvnw.cmd -pl payments spring-boot:run %ARGS%
+start "FarmaExpress inventory :8085" cmd /k mvnw.cmd -pl inventory spring-boot:run %ARGS%
 start "FarmaExpress bff :8080" cmd /k mvnw.cmd -pl bff spring-boot:run %ARGS%
 
-echo Iniciando catalog (8081), prescriptions (8082) y bff (8080) en ventanas separadas...
+echo Iniciando bff (8080), catalog (8081), prescriptions (8082), notifications (8083), payments (8084) e inventory (8085)...
+echo Pagos, avisos y stock usan RabbitMQ: si no esta corriendo, ejecuta  docker compose up -d rabbitmq  (consola: http://localhost:15672)
 endlocal

@@ -48,6 +48,10 @@ public class Usuario {
 	@Column(name = "ultimo_ingreso")
 	private Instant ultimoIngreso;
 
+	/** Teléfono de contacto para el despacho (lo edita la persona en Mi cuenta). */
+	@Column(length = 20)
+	private String telefono;
+
 	protected Usuario() {
 	}
 
@@ -70,6 +74,18 @@ public class Usuario {
 
 	public Long getId() {
 		return id;
+	}
+
+	public String getTelefono() {
+		return telefono;
+	}
+
+	public void cambiarTelefono(String telefono) {
+		this.telefono = telefono == null || telefono.isBlank() ? null : telefono.trim();
+	}
+
+	public Instant getCreadoEn() {
+		return creadoEn;
 	}
 
 	public String getEntraOid() {

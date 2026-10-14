@@ -29,6 +29,19 @@ public class PrescriptionsClient {
 		this.client = client;
 	}
 
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+	public record Receta(Long id, String status, String pacienteNombre) {
+	}
+
+	/** La receta solo se devuelve si es de la cuenta del token (si no, prescriptions responde 404). */
+	public Receta obtener(Long id, String token) {
+		return client.get()
+			.uri(RECETAS + "/{id}", id)
+			.header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + token)
+			.retrieve()
+			.body(Receta.class);
+	}
+
 	public ResponseEntity<byte[]> reenviar(HttpMethod method, String ruta, String jsonBody, String token) {
 		return Reenvio.reenviar(client, method, RECETAS + ruta, jsonBody, MediaType.APPLICATION_JSON, token);
 	}

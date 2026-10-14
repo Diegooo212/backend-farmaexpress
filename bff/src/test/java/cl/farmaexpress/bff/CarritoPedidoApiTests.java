@@ -2,12 +2,8 @@ package cl.farmaexpress.bff;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -24,9 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -35,13 +29,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 
 import cl.farmaexpress.bff.catalog.CatalogClient;
 import cl.farmaexpress.bff.catalog.CatalogClient.Medicamento;
 
-/** Carrito y compras con el microservicio de catálogo simulado. */
+/** Carrito con el microservicio de catálogo simulado (el checkout está en CheckoutApiTests). */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles({ "h2", "test" })
@@ -100,48 +93,6 @@ class CarritoPedidoApiTests {
 				.content("{\"items\":[{\"id\":1,\"cantidad\":0}]}"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.detail").value(containsString("mayor que cero")));
-	}
-
-	@Test
-	void comprarDescuentaStockGuardaPedidoYVaciaCarrito() throws Exception {
-		guardarCarrito("diego@test.cl", "[{\"id\":1,\"cantidad\":2},{\"id\":2,\"cantidad\":1}]");
-		given(catalog.descontarStock(anyList(), eq("token-de-diego@test.cl"))).willReturn(List.of(
-				new Medicamento(1L, "MED-001", "Paracetamol 500mg", 1990, 118),
-				new Medicamento(2L, "MED-002", "Ibuprofeno 400mg", 2490, 7)));
-
-		mvc.perform(post("/api/bff/orders").with(como("diego@test.cl")))
-			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.id").isNumber())
-			.andExpect(jsonPath("$.total").value(2 * 1990 + 2490))
-			.andExpect(jsonPath("$.items", hasSize(2)))
-			.andExpect(jsonPath("$.items[0].nombre").value("Paracetamol 500mg"));
-
-		mvc.perform(get("/api/bff/cart").with(como("diego@test.cl"))).andExpect(jsonPath("$.items", hasSize(0)));
-		mvc.perform(get("/api/bff/orders").with(como("diego@test.cl"))).andExpect(jsonPath("$", hasSize(1)));
-		mvc.perform(get("/api/bff/orders").with(como("otra@test.cl"))).andExpect(jsonPath("$", hasSize(0)));
-	}
-
-	@Test
-	void comprarConCarritoVacioDa400() throws Exception {
-		mvc.perform(post("/api/bff/orders").with(como("diego@test.cl")))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.detail").value("Tu carrito está vacío."));
-		verify(catalog, never()).descontarStock(anyList(), any());
-	}
-
-	@Test
-	void sinStockSeDevuelveElMensajeDelCatalogoYElCarritoQueda() throws Exception {
-		guardarCarrito("diego@test.cl", "[{\"id\":2,\"cantidad\":8}]");
-		String problema = "{\"status\":409,\"detail\":\"No hay stock suficiente de Ibuprofeno 400mg: quedan 3 y pediste 8.\"}";
-		HttpHeaders headers = new HttpHeaders();
-		headers.setContentType(MediaType.APPLICATION_PROBLEM_JSON);
-		given(catalog.descontarStock(anyList(), any())).willThrow(HttpClientErrorException.create(HttpStatus.CONFLICT,
-				"Conflict", headers, problema.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8));
-
-		mvc.perform(post("/api/bff/orders").with(como("diego@test.cl")))
-			.andExpect(status().isConflict())
-			.andExpect(jsonPath("$.detail").value(containsString("quedan 3")));
-		mvc.perform(get("/api/bff/cart").with(como("diego@test.cl"))).andExpect(jsonPath("$.items", hasSize(1)));
 	}
 
 	@Test

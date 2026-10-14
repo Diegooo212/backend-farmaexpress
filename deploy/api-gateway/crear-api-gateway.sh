@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Crea el API Manager de FarmaExpress en AWS API Gateway (HTTP API):
-#   - una ruta por endpoint del BFF, con integración HTTP hacia la EC2;
+#   - una ruta por endpoint del BFF (lista en rutas.txt), con integración HTTP hacia la EC2;
 #   - autorizador JWT de Microsoft Entra ID (valida firma, iss, aud, exp) y scope "access_as_user";
 #   - CORS para el frontend.
 # Ejecutar en AWS CloudShell:
@@ -49,41 +49,11 @@ AUTH_ID=$(aws apigatewayv2 create-authorizer --api-id "$API_ID" --name entra-id-
   --jwt-configuration "{\"Issuer\":\"$ISSUER\",\"Audience\":[\"$AZURE_API_CLIENT_ID\",\"api://$AZURE_API_CLIENT_ID\"]}" \
   --query AuthorizerId --output text)
 
-# ruta <MÉTODO> <ruta> <publica|protegida>
-ruta() {
-  local metodo=$1 path=$2 acceso=$3
-  local integracion
-  integracion=$(aws apigatewayv2 create-integration --api-id "$API_ID" \
-    --integration-type HTTP_PROXY --integration-method "$metodo" \
-    --integration-uri "${BACKEND}${path}" --payload-format-version 1.0 \
-    --timeout-in-millis 29000 --query IntegrationId --output text)
-  if [ "$acceso" = "protegida" ]; then
-    aws apigatewayv2 create-route --api-id "$API_ID" --route-key "$metodo $path" \
-      --target "integrations/$integracion" --authorization-type JWT \
-      --authorizer-id "$AUTH_ID" --authorization-scopes "$SCOPE" >/dev/null
-  else
-    aws apigatewayv2 create-route --api-id "$API_ID" --route-key "$metodo $path" \
-      --target "integrations/$integracion" >/dev/null
-  fi
-  printf '    %-6s %-45s %s\n' "$metodo" "$path" "$acceso"
-}
+# Funciones ruta() y crear_rutas() compartidas con actualizar-rutas.sh.
+source "$(dirname "$0")/rutas.sh"
 
 echo "==> Rutas (JWT + scope '$SCOPE' en las protegidas; los roles Admin/Operador los valida el BFF)"
-ruta GET  /api/bff/catalog/medicamentos                publica
-ruta GET  /api/bff/catalog/medicamentos/{id}           publica
-ruta POST /api/bff/catalog/medicamentos                protegida
-ruta PUT  /api/bff/catalog/medicamentos/{id}           protegida
-ruta DELETE /api/bff/catalog/medicamentos/{id}         protegida
-ruta GET  /api/bff/auth/me                             protegida
-ruta GET  /api/bff/cart                                protegida
-ruta PUT  /api/bff/cart                                protegida
-ruta GET  /api/bff/orders                              protegida
-ruta POST /api/bff/orders                              protegida
-ruta GET  /api/bff/prescriptions                       protegida
-ruta POST /api/bff/prescriptions                       protegida
-ruta GET  /api/bff/prescriptions/{id}                  protegida
-ruta GET  /api/bff/prescriptions/{id}/archivo          protegida
-ruta PUT  /api/bff/prescriptions/{id}/status           protegida
+crear_rutas
 
 echo "==> Stage \$default con despliegue automático"
 aws apigatewayv2 create-stage --api-id "$API_ID" --stage-name '$default' --auto-deploy >/dev/null

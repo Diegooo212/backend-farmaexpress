@@ -1,0 +1,120 @@
+# FarmaExpress en AWS: EC2 #4 "farmaexpress-mensajeria".
+#
+# Levanta con docker compose el clúster de RabbitMQ (2 nodos) y los microservicios que viven de la
+# mensajería. La base de datos es la EC2 farmaexpress-db (MySQL) y el BFF sigue en su propia EC2.
+#
+#   cp deploy/ec2/nube.env.example .env       (una vez; completa los CAMBIAR)
+#   docker compose -f docker-compose.nube.yml up -d --build
+#   docker compose -f docker-compose.nube.yml ps
+#   docker exec farmaexpress-rabbitmq1 rabbitmqctl cluster_status
+#
+#   EC2 farmaexpress-bff ──HTTP──► :8083 notifications · :8084 payments · :8085 inventory · :8086 rabbit-admin
+#   EC2 bff / microservicios ──AMQP──► :5672 (rabbitmq1) · :5673 (rabbitmq2)
+#   Consola de RabbitMQ: http://<IP pública de esta EC2>:15672 (nodo 1) y :15673 (nodo 2)
+name: farmaexpress
+
+x-rabbitmq: &rabbitmq
+  image: rabbitmq:4-management
+  environment:
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-farmaexpress}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Define RABBITMQ_PASSWORD en .env}
+    # Mismo secreto de Erlang (cookie) en ambos nodos: es lo que les permite formar el clúster.
+    RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -setcookie ${RABBITMQ_COOKIE:?Define RABBITMQ_COOKIE en .env}
+    RABBITMQ_CTL_ERL_ARGS: -setcookie ${RABBITMQ_COOKIE}
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 10s
+    timeout: 10s
+    retries: 12
+  restart: unless-stopped
+
+x-microservicio: &microservicio
+  restart: unless-stopped
+  mem_limit: 512m
+  depends_on:
+    rabbitmq1:
+      condition: service_healthy
+    rabbitmq2:
+      condition: service_healthy
+
+x-entorno: &entorno
+  DB_HOST: ${DB_HOST:?Define DB_HOST con la IP privada de farmaexpress-db}
+  DB_USER: ${DB_USER:-farmaexpress}
+  DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD}
+  RABBITMQ_ADDRESSES: rabbitmq1:5672,rabbitmq2:5672
+  RABBITMQ_USER: ${RABBITMQ_USER:-farmaexpress}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+  AZURE_TENANT_ID: ${AZURE_TENANT_ID:?Define AZURE_TENANT_ID}
+  AZURE_API_CLIENT_ID: ${AZURE_API_CLIENT_ID:?Define AZURE_API_CLIENT_ID}
+  AZURE_ISSUER: ${AZURE_ISSUER:-}
+
+services:
+  rabbitmq1:
+    <<: *rabbitmq
+    hostname: rabbitmq1
+    container_name: farmaexpress-rabbitmq1
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rabbitmq1-data:/var/lib/rabbitmq
+
+  rabbitmq2:
+    <<: *rabbitmq
+    hostname: rabbitmq2
+    container_name: farmaexpress-rabbitmq2
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rabbitmq2-data:/var/lib/rabbitmq
+
+  notifications:
+    <<: *microservicio
+    build: ./notifications
+    image: farmaexpress/notifications
+    container_name: farmaexpress-notifications
+    ports:
+      - "8083:8083"
+    environment:
+      <<: *entorno
+
+  payments:
+    <<: *microservicio
+    build: ./payments
+    image: farmaexpress/payments
+    container_name: farmaexpress-payments
+    ports:
+      - "8084:8084"
+    environment:
+      <<: *entorno
+      # El navegador vuelve desde la pasarela al BFF a través del API Gateway, y luego al frontend.
+      PAGOS_URL_RETORNO: ${PAGOS_URL_RETORNO:?Define PAGOS_URL_RETORNO (URL del API Gateway + /api/bff/payments/retorno)}
+      FRONTEND_URL: ${FRONTEND_URL:?Define FRONTEND_URL (URL de Amplify)}
+
+  inventory:
+    <<: *microservicio
+    build: ./inventory
+    image: farmaexpress/inventory
+    container_name: farmaexpress-inventory
+    ports:
+      - "8085:8085"
+    environment:
+      <<: *entorno
+
+  rabbit-admin:
+    <<: *microservicio
+    build: ./rabbit-admin
+    image: farmaexpress/rabbit-admin
+    container_name: farmaexpress-rabbit-admin
+    ports:
+      - "8086:8086"
+    environment:
+      <<: *entorno
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq1:15672
+
+volumes:
+  rabbitmq1-data:
+  rabbitmq2-data:

@@ -25,6 +25,26 @@ public class RestClientsConfig {
 		return builder.clone().baseUrl(props.services().prescriptionsUrl()).requestFactory(requestFactory()).build();
 	}
 
+	@Bean
+	RestClient notificationsRestClient(RestClient.Builder builder, FarmaexpressProperties props) {
+		return builder.clone().baseUrl(props.services().notificationsUrl()).requestFactory(requestFactory()).build();
+	}
+
+	@Bean
+	RestClient inventoryRestClient(RestClient.Builder builder, FarmaexpressProperties props) {
+		return builder.clone().baseUrl(props.services().inventoryUrl()).requestFactory(requestFactory()).build();
+	}
+
+	@Bean
+	RestClient paymentsRestClient(RestClient.Builder builder, FarmaexpressProperties props) {
+		return builder.clone().baseUrl(props.services().paymentsUrl()).requestFactory(requestFactory()).build();
+	}
+
+	@Bean
+	RestClient rabbitAdminRestClient(RestClient.Builder builder, FarmaexpressProperties props) {
+		return builder.clone().baseUrl(props.services().rabbitAdminUrl()).requestFactory(requestFactory()).build();
+	}
+
 	private static JdkClientHttpRequestFactory requestFactory() {
 		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(CONEXION).build();
 		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);

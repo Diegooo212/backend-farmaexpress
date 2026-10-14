@@ -1,0 +1,176 @@
+# FarmaExpress: todo el backend en contenedores.
+#
+#   copy docker.env.example .env        (una vez; completa AZURE_TENANT_ID y AZURE_API_CLIENT_ID)
+#   docker compose up -d --build        -> MySQL + clúster RabbitMQ (2 nodos) + los 7 microservicios
+#   docker compose ps                   -> estado (healthy = /actuator/health responde UP)
+#   docker compose logs -f payments     -> logs de un servicio
+#   docker compose down                 -> detener (los datos quedan en los volúmenes)
+#
+# Solo el clúster de RabbitMQ (y correr los microservicios con iniciar-backend.cmd):
+#   docker compose up -d rabbitmq1 rabbitmq2
+#   docker exec farmaexpress-rabbitmq1 rabbitmqctl cluster_status     -> ver los 2 nodos del clúster
+#
+# Igual que en la nube, desde fuera solo se llega al BFF (8080).
+# Consola de RabbitMQ: http://localhost:15672 (nodo 1) y http://localhost:15673 (nodo 2).
+# MySQL queda en el puerto 3307 del PC (para no chocar con un MySQL local en el 3306).
+name: farmaexpress
+
+x-microservicio: &microservicio
+  restart: unless-stopped
+  mem_limit: 512m
+  depends_on:
+    mysql:
+      condition: service_healthy
+    rabbitmq1:
+      condition: service_healthy
+    rabbitmq2:
+      condition: service_healthy
+
+# Nodo de RabbitMQ: mismo secreto de Erlang (cookie) en ambos para que puedan unirse en un clúster.
+x-rabbitmq: &rabbitmq
+  image: rabbitmq:4-management
+  environment: &entorno-rabbit
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-farmaexpress}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-farmaexpress}
+    RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -setcookie ${RABBITMQ_COOKIE:-farmaexpress-cluster-cookie}
+    RABBITMQ_CTL_ERL_ARGS: -setcookie ${RABBITMQ_COOKIE:-farmaexpress-cluster-cookie}
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 10s
+    timeout: 10s
+    retries: 12
+  restart: unless-stopped
+
+x-entorno: &entorno
+  DB_HOST: mysql
+  DB_USER: root
+  DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-farmaexpress}
+  # Los microservicios conocen los dos nodos: si uno cae, se reconectan al otro.
+  RABBITMQ_ADDRESSES: rabbitmq1:5672,rabbitmq2:5672
+  RABBITMQ_USER: ${RABBITMQ_USER:-farmaexpress}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-farmaexpress}
+  AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+  AZURE_API_CLIENT_ID: ${AZURE_API_CLIENT_ID:-}
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: farmaexpress-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-farmaexpress}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Clúster de RabbitMQ: 2 nodos que se descubren solos (rabbitmq/rabbitmq.conf).
+  rabbitmq1:
+    <<: *rabbitmq
+    hostname: rabbitmq1
+    container_name: farmaexpress-rabbitmq1
+    ports:
+      - "5672:5672"     # AMQP (también para los microservicios que corren fuera de Docker)
+      - "15672:15672"   # consola web y API de administración
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rabbitmq1-data:/var/lib/rabbitmq
+
+  rabbitmq2:
+    <<: *rabbitmq
+    hostname: rabbitmq2
+    container_name: farmaexpress-rabbitmq2
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rabbitmq2-data:/var/lib/rabbitmq
+
+  catalog:
+    <<: *microservicio
+    build: ./catalog
+    image: farmaexpress/catalog
+    container_name: farmaexpress-catalog
+    environment:
+      <<: *entorno
+
+  prescriptions:
+    <<: *microservicio
+    build: ./prescriptions
+    image: farmaexpress/prescriptions
+    container_name: farmaexpress-prescriptions
+    environment:
+      <<: *entorno
+
+  notifications:
+    <<: *microservicio
+    build: ./notifications
+    image: farmaexpress/notifications
+    container_name: farmaexpress-notifications
+    environment:
+      <<: *entorno
+
+  inventory:
+    <<: *microservicio
+    build: ./inventory
+    image: farmaexpress/inventory
+    container_name: farmaexpress-inventory
+    environment:
+      <<: *entorno
+
+  payments:
+    <<: *microservicio
+    build: ./payments
+    image: farmaexpress/payments
+    container_name: farmaexpress-payments
+    environment:
+      <<: *entorno
+      # El navegador del cliente vuelve desde el proveedor al BFF (dirección vista desde el PC, no desde Docker).
+      PAGOS_URL_RETORNO: ${PAGOS_URL_RETORNO:-http://localhost:8080/api/bff/payments/retorno}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      WEBPAY_API_KEY: ${WEBPAY_API_KEY:-}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      KHIPU_API_KEY: ${KHIPU_API_KEY:-}
+
+  # Administrador de RabbitMQ: crea y elimina colas, exchanges y bindings por API REST (solo Admin).
+  rabbit-admin:
+    <<: *microservicio
+    build: ./rabbit-admin
+    image: farmaexpress/rabbit-admin
+    container_name: farmaexpress-rabbit-admin
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+      rabbitmq2:
+        condition: service_healthy
+    environment:
+      <<: *entorno
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq1:15672
+
+  bff:
+    <<: *microservicio
+    build: ./bff
+    image: farmaexpress/bff
+    container_name: farmaexpress-bff
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *entorno
+      CATALOG_URL: http://catalog:8081
+      PRESCRIPTIONS_URL: http://prescriptions:8082
+      NOTIFICATIONS_URL: http://notifications:8083
+      PAYMENTS_URL: http://payments:8084
+      RABBIT_ADMIN_URL: http://rabbit-admin:8086
+      INVENTORY_URL: http://inventory:8085
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+
+volumes:
+  mysql-data:
+  rabbitmq1-data:
+  rabbitmq2-data:

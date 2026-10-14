@@ -1,0 +1,69 @@
+# Rutas del BFF que expone el API Gateway: <MÉTODO> <ruta> <publica|protegida>
+# "protegida" = el API Gateway exige un JWT válido de Entra ID con el scope access_as_user.
+# Los roles (Admin / Operador) los valida además el BFF.
+# Lo usan crear-api-gateway.sh (API nueva) y actualizar-rutas.sh (agrega las que falten a una API existente).
+
+# Catálogo (lectura pública; crear/editar/eliminar solo Admin)
+GET    /api/bff/catalog/medicamentos                    publica
+GET    /api/bff/catalog/medicamentos/{id}               publica
+GET    /api/bff/catalog/categorias                      publica
+POST   /api/bff/catalog/medicamentos                    protegida
+PUT    /api/bff/catalog/medicamentos/{id}               protegida
+DELETE /api/bff/catalog/medicamentos/{id}               protegida
+
+# Sesión y cuenta
+GET    /api/bff/auth/me                                 protegida
+GET    /api/bff/account/perfil                          protegida
+PUT    /api/bff/account/perfil                          protegida
+GET    /api/bff/account/direcciones                     protegida
+POST   /api/bff/account/direcciones                     protegida
+PUT    /api/bff/account/direcciones/{id}                protegida
+DELETE /api/bff/account/direcciones/{id}                protegida
+GET    /api/bff/account/favoritos                       protegida
+PUT    /api/bff/account/favoritos/{medicamentoId}       protegida
+DELETE /api/bff/account/favoritos/{medicamentoId}       protegida
+
+# Carrito y pedidos
+GET    /api/bff/cart                                    protegida
+PUT    /api/bff/cart                                    protegida
+GET    /api/bff/orders                                  protegida
+POST   /api/bff/orders                                  protegida
+GET    /api/bff/orders/despacho                         protegida
+GET    /api/bff/orders/{id}                             protegida
+DELETE /api/bff/orders/{id}                             protegida
+POST   /api/bff/orders/{id}/pago                        protegida
+GET    /api/bff/gestion/pedidos                         protegida
+PUT    /api/bff/gestion/pedidos/{id}/estado             protegida
+
+# Pagos (el retorno desde el proveedor llega sin token: lo valida payments con el secreto del pago)
+GET    /api/bff/payments/metodos                        publica
+GET    /api/bff/payments/{id}                           protegida
+POST   /api/bff/payments/simulacion                     protegida
+GET    /api/bff/payments/retorno/{metodo}               publica
+POST   /api/bff/payments/retorno/{metodo}               publica
+
+# Inventario (sucursales, disponibilidad y cobertura son públicos: los usa la tienda)
+GET    /api/bff/inventory/sucursales                    publica
+GET    /api/bff/inventory/disponibilidad/{medicamentoId} publica
+POST   /api/bff/inventory/cobertura                     publica
+GET    /api/bff/inventory/lotes                         protegida
+POST   /api/bff/inventory/lotes                         protegida
+POST   /api/bff/inventory/lotes/{id}/merma              protegida
+GET    /api/bff/inventory/lotes/{id}/movimientos        protegida
+GET    /api/bff/inventory/resumen                       protegida
+
+# Recetas
+GET    /api/bff/prescriptions                           protegida
+POST   /api/bff/prescriptions                           protegida
+GET    /api/bff/prescriptions/{id}                      protegida
+GET    /api/bff/prescriptions/{id}/archivo              protegida
+PUT    /api/bff/prescriptions/{id}/status               protegida
+
+# Avisos (campana)
+GET    /api/bff/notifications                           protegida
+PUT    /api/bff/notifications/leidas                    protegida
+
+# Administrador de RabbitMQ (solo Admin): colas, exchanges y bindings
+GET    /api/bff/admin/rabbit/{proxy+}                   protegida
+POST   /api/bff/admin/rabbit/{proxy+}                   protegida
+DELETE /api/bff/admin/rabbit/{proxy+}                   protegida

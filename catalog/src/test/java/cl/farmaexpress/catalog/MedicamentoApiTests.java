@@ -47,6 +47,9 @@ class MedicamentoApiTests {
 	@Autowired
 	MedicamentoRepository repository;
 
+	@Autowired
+	cl.farmaexpress.catalog.eventos.InventarioListener inventario;
+
 	private static RequestPostProcessor como(String rol) {
 		return jwt().jwt(j -> j.subject(rol.toLowerCase() + "@test.cl"))
 			.authorities(new SimpleGrantedAuthority("SCOPE_access_as_user"), new SimpleGrantedAuthority("ROLE_" + rol));
@@ -61,11 +64,49 @@ class MedicamentoApiTests {
 	void listarEsPublicoYTraeLosDatosIniciales() throws Exception {
 		mvc.perform(get(BASE))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$", hasSize(6)))
+			.andExpect(jsonPath("$", hasSize(21)))
 			.andExpect(jsonPath("$[0].sku").value("MED-001"))
 			.andExpect(jsonPath("$[0].nombre").value("Paracetamol 500mg"))
 			.andExpect(jsonPath("$[0].precio").value(1990))
-			.andExpect(jsonPath("$[0].stock").value(120));
+			.andExpect(jsonPath("$[0].stock").value(120))
+			.andExpect(jsonPath("$[0].categoria").value("Dolor y fiebre"))
+			.andExpect(jsonPath("$[0].categoriaSlug").value("dolor-y-fiebre"))
+			.andExpect(jsonPath("$[0].presentacion").value("Caja 16 comprimidos"))
+			.andExpect(jsonPath("$[0].requiereReceta").value(false))
+			.andExpect(jsonPath("$[2].nombre").value("Amoxicilina 500mg"))
+			.andExpect(jsonPath("$[2].requiereReceta").value(true));
+	}
+
+	@Test
+	void lasCategoriasSonPublicasYCuentanSusProductos() throws Exception {
+		mvc.perform(get("/api/catalog/categorias"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$", hasSize(8)))
+			.andExpect(jsonPath("$[0].slug").value("dolor-y-fiebre"))
+			.andExpect(jsonPath("$[0].productos").value(4))
+			.andExpect(jsonPath("$[4].nombre").value("Antibióticos"))
+			.andExpect(jsonPath("$[4].productos").value(2));
+	}
+
+	@Test
+	void crearConFichaCompleta() throws Exception {
+		String body = """
+				{"sku":"MED-200","nombre":"Naproxeno 550mg","precio":3990,"categoriaId":1,"laboratorio":"FarmaGen",
+				 "principioActivo":"Naproxeno","presentacion":"Caja 10 comprimidos","requiereReceta":true,
+				 "descripcion":"Antiinflamatorio.","imagenUrl":"https://ejemplo.cl/naproxeno.png"}""";
+		mvc.perform(post(BASE).with(como("Admin")).contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.stock").value(0))
+			.andExpect(jsonPath("$.categoria").value("Dolor y fiebre"))
+			.andExpect(jsonPath("$.requiereReceta").value(true))
+			.andExpect(jsonPath("$.imagenUrl").value("https://ejemplo.cl/naproxeno.png"));
+
+		mvc.perform(post(BASE).with(como("Admin")).contentType(MediaType.APPLICATION_JSON)
+				.content(body.replace("MED-200", "MED-201").replace("\"categoriaId\":1", "\"categoriaId\":99")))
+			.andExpect(status().isBadRequest());
+		mvc.perform(post(BASE).with(como("Admin")).contentType(MediaType.APPLICATION_JSON)
+				.content(body.replace("MED-200", "MED-202").replace("https://", "http://")))
+			.andExpect(status().isBadRequest());
 	}
 
 	@Test
@@ -99,12 +140,12 @@ class MedicamentoApiTests {
 	}
 
 	@Test
-	void actualizarPrecioYStock() throws Exception {
-		String body = "{\"sku\":\"MED-002\",\"nombre\":\"Ibuprofeno 400mg\",\"precio\":2590,\"stock\":50}";
+	void actualizarPrecioPeroNoElStockQueEsDelInventario() throws Exception {
+		String body = "{\"sku\":\"MED-002\",\"nombre\":\"Ibuprofeno 400mg\",\"precio\":2590,\"stock\":50,\"categoriaId\":1}";
 		mvc.perform(put(BASE + "/2").with(como("Admin")).contentType(MediaType.APPLICATION_JSON).content(body))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.precio").value(2590))
-			.andExpect(jsonPath("$.stock").value(50));
+			.andExpect(jsonPath("$.stock").value(8));
 		mvc.perform(put(BASE + "/999").with(como("Admin")).contentType(MediaType.APPLICATION_JSON).content(body))
 			.andExpect(status().isNotFound());
 	}
@@ -116,7 +157,7 @@ class MedicamentoApiTests {
 		mvc.perform(delete(BASE + "/6").with(como("Admin"))).andExpect(status().isNoContent());
 
 		mvc.perform(get(BASE + "/6")).andExpect(status().isNotFound());
-		mvc.perform(get(BASE)).andExpect(jsonPath("$", hasSize(5)));
+		mvc.perform(get(BASE)).andExpect(jsonPath("$", hasSize(20)));
 		mvc.perform(delete(BASE + "/6").with(como("Admin"))).andExpect(status().isNotFound());
 	}
 
@@ -209,5 +250,18 @@ class MedicamentoApiTests {
 		crearConToken(EntraDePrueba.token(Map.of("roles", List.of("Admin"),
 				"iat", antes, "nbf", antes, "exp", antes.plusSeconds(600))))
 			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void elStockLoInformaElInventarioPorRabbitMq() throws Exception {
+		inventario.stockCambiado(new cl.farmaexpress.catalog.eventos.InventarioListener.StockCambiado("ev-1",
+				List.of(new cl.farmaexpress.catalog.eventos.InventarioListener.StockProducto(1L, 77, 101),
+						new cl.farmaexpress.catalog.eventos.InventarioListener.StockProducto(999L, 5, 5)),
+				java.time.Instant.now()));
+
+		mvc.perform(get(BASE + "/1"))
+			.andExpect(status().isOk())
+			.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.stock").value(77))
+			.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.stockTotal").value(101));
 	}
 }

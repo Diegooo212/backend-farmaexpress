@@ -50,6 +50,11 @@ DB_PASSWORD=CAMBIAR
 # Microsoft Entra ID (mismos valores que el frontend)
 AZURE_TENANT_ID=CAMBIAR
 AZURE_API_CLIENT_ID=CAMBIAR
+
+# Clúster de RabbitMQ: IP PRIVADA de la EC2 farmaexpress-mensajeria (nodo 1 en :5672, nodo 2 en :5673)
+RABBITMQ_ADDRESSES=CAMBIAR_IP_PRIVADA_MENSAJERIA:5672,CAMBIAR_IP_PRIVADA_MENSAJERIA:5673
+RABBITMQ_USER=farmaexpress
+RABBITMQ_PASSWORD=CAMBIAR
 ENV
     if [ "$ROL" = "bff" ]; then
       cat <<'ENV'
@@ -57,6 +62,12 @@ ENV
 # IP PRIVADA de la EC2 de microservicios (catalog y prescriptions)
 CATALOG_URL=http://CAMBIAR_IP_PRIVADA_MICROSERVICIOS:8081
 PRESCRIPTIONS_URL=http://CAMBIAR_IP_PRIVADA_MICROSERVICIOS:8082
+
+# IP PRIVADA de la EC2 farmaexpress-mensajeria (docker-compose.nube.yml)
+NOTIFICATIONS_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8083
+PAYMENTS_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8084
+INVENTORY_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8085
+RABBIT_ADMIN_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8086
 
 # Orígenes del frontend que pueden llamar al BFF (frontend local de Vite)
 CORS_ORIGINS=http://localhost:5173

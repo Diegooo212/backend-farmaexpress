@@ -38,6 +38,9 @@ import org.springframework.transaction.annotation.Transactional;
 import cl.farmaexpress.bff.auth.Rol;
 import cl.farmaexpress.bff.auth.UsuarioRepository;
 import cl.farmaexpress.bff.catalog.CatalogClient;
+import cl.farmaexpress.bff.inventory.InventoryClient;
+import cl.farmaexpress.bff.notifications.NotificationsClient;
+import cl.farmaexpress.bff.payments.PaymentsClient;
 import cl.farmaexpress.bff.prescriptions.PrescriptionsClient;
 
 /**
@@ -62,6 +65,15 @@ class SeguridadApiTests {
 
 	@MockitoBean
 	PrescriptionsClient prescriptions;
+
+	@MockitoBean
+	NotificationsClient notifications;
+
+	@MockitoBean
+	InventoryClient inventory;
+
+	@MockitoBean
+	PaymentsClient payments;
 
 	private static MockHttpServletRequestBuilder conToken(MockHttpServletRequestBuilder request, Map<String, Object> claims) {
 		return request.header("Authorization", "Bearer " + EntraDePrueba.token(claims));
@@ -88,6 +100,15 @@ class SeguridadApiTests {
 		// Si en Entra le quitan el App Role, en su siguiente ingreso vuelve a ser Cliente.
 		mvc.perform(conToken(get("/api/bff/auth/me"), Map.of("oid", "oid-carla")))
 			.andExpect(jsonPath("$.roles[0]").value("Cliente"));
+	}
+
+	@Test
+	void soloElAdministradorEntraAlAdministradorDeRabbit() throws Exception {
+		mvc.perform(get("/api/bff/admin/rabbit/queues")).andExpect(status().isUnauthorized());
+		mvc.perform(conToken(get("/api/bff/admin/rabbit/queues"), Map.of("oid", "oid-cliente")))
+			.andExpect(status().isForbidden());
+		mvc.perform(conToken(post("/api/bff/admin/rabbit/queues"), Map.of("oid", "oid-op", "roles", List.of("Operador"))))
+			.andExpect(status().isForbidden());
 	}
 
 	@Test
@@ -181,6 +202,45 @@ class SeguridadApiTests {
 		mvc.perform(get("/api/bff/prescriptions").header("Authorization", "Bearer " + token))
 			.andExpect(status().isOk());
 		org.mockito.Mockito.verify(prescriptions).reenviar(HttpMethod.GET, "", null, token);
+	}
+
+	@Test
+	void losAvisosExigenTokenYSeReenvianConElMismoToken() throws Exception {
+		String token = EntraDePrueba.token(Map.of());
+		given(notifications.reenviar(HttpMethod.GET, "", token)).willReturn(json("[]"));
+
+		mvc.perform(get("/api/bff/notifications")).andExpect(status().isUnauthorized());
+		mvc.perform(put("/api/bff/notifications/leidas")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/bff/notifications").header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+		org.mockito.Mockito.verify(notifications).reenviar(HttpMethod.GET, "", token);
+	}
+
+	@Test
+	void inventarioPublicoParaLaTiendaYLotesSoloParaElPersonal() throws Exception {
+		given(inventory.reenviar(HttpMethod.GET, "/sucursales", null, null)).willReturn(json("[]"));
+		given(inventory.reenviar(eq(HttpMethod.GET), eq("/lotes"), isNull(), anyString())).willReturn(json("[]"));
+
+		mvc.perform(get("/api/bff/inventory/sucursales")).andExpect(status().isOk());
+		mvc.perform(get("/api/bff/inventory/lotes")).andExpect(status().isUnauthorized());
+		mvc.perform(conToken(get("/api/bff/inventory/lotes"), Map.of())).andExpect(status().isForbidden());
+		mvc.perform(conToken(get("/api/bff/inventory/lotes"), Map.of("roles", List.of("Operador")))).andExpect(status().isOk());
+	}
+
+	@Test
+	void elRetornoDelProveedorEsPublicoYRedirigeAlFrontend() throws Exception {
+		given(payments.retorno(eq("webpay"), org.mockito.ArgumentMatchers.any())).willReturn(ResponseEntity.status(303)
+			.location(java.net.URI.create("http://localhost:5173/pago/resultado?pedido=9")).build());
+
+		// Webpay vuelve con un formulario POST y sin token.
+		mvc.perform(post("/api/bff/payments/retorno/webpay").param("pago", "3").param("token_ws", "tok")
+				.contentType(MediaType.APPLICATION_FORM_URLENCODED))
+			.andExpect(status().isSeeOther())
+			.andExpect(header().string("Location", "http://localhost:5173/pago/resultado?pedido=9"));
+		// Simular la caída de un proveedor es solo para Admin.
+		mvc.perform(conToken(post("/api/bff/payments/simulacion"), Map.of("roles", List.of("Operador")))
+				.contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.andExpect(status().isForbidden());
 	}
 
 	@Test

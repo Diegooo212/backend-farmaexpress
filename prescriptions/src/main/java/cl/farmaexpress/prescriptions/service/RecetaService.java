@@ -4,8 +4,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +20,7 @@ import cl.farmaexpress.prescriptions.domain.Receta;
 import cl.farmaexpress.prescriptions.domain.RecetaArchivo;
 import cl.farmaexpress.prescriptions.domain.RecetaArchivoRepository;
 import cl.farmaexpress.prescriptions.domain.RecetaRepository;
+import cl.farmaexpress.prescriptions.eventos.RecetaEstadoCambiado;
 import cl.farmaexpress.prescriptions.web.dto.RecetaDtos.CambioEstadoRequest;
 import cl.farmaexpress.prescriptions.web.dto.RecetaDtos.RecetaRequest;
 import cl.farmaexpress.prescriptions.web.dto.RecetaDtos.RecetaResponse;
@@ -27,13 +30,15 @@ public class RecetaService {
 
 	private final RecetaRepository recetas;
 	private final RecetaArchivoRepository archivos;
+	private final ApplicationEventPublisher eventos;
 	private final ZoneId zona;
 	private final Clock clock;
 
-	public RecetaService(RecetaRepository recetas, RecetaArchivoRepository archivos,
+	public RecetaService(RecetaRepository recetas, RecetaArchivoRepository archivos, ApplicationEventPublisher eventos,
 			@Value("${farmaexpress.zona-horaria}") String zona) {
 		this.recetas = recetas;
 		this.archivos = archivos;
+		this.eventos = eventos;
 		this.zona = ZoneId.of(zona);
 		this.clock = Clock.systemUTC();
 	}
@@ -113,8 +118,14 @@ public class RecetaService {
 					"Escribe el motivo del rechazo: el paciente lo verá para saber qué corregir.");
 		}
 
-		receta.cambiarEstado(nuevo, nota, usuario.nombre(), Instant.now(clock));
+		Instant ahora = Instant.now(clock);
+		receta.cambiarEstado(nuevo, nota, usuario.nombre(), ahora);
 		recetas.flush();
+		if (receta.getCuentaId() != null) {
+			// Se envía a RabbitMQ recién cuando la transacción hace commit (ver PublicadorEventos).
+			eventos.publishEvent(new RecetaEstadoCambiado(UUID.randomUUID().toString(), receta.getId(),
+					receta.getCuentaId(), nuevo.name(), nota, receta.getMetodoDespacho().name(), receta.getFarmacia(), ahora));
+		}
 		return aRespuesta(receta);
 	}
 

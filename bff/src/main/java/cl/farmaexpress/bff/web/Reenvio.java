@@ -15,7 +15,7 @@ import org.springframework.web.client.RestClient;
 public final class Reenvio {
 
 	private static final List<String> HEADERS_QUE_PASAN = List.of(
-			HttpHeaders.CONTENT_TYPE, HttpHeaders.CONTENT_DISPOSITION, HttpHeaders.CACHE_CONTROL);
+			HttpHeaders.CONTENT_TYPE, HttpHeaders.CONTENT_DISPOSITION, HttpHeaders.CACHE_CONTROL, HttpHeaders.LOCATION);
 
 	private Reenvio() {
 	}

@@ -44,6 +44,16 @@ public class SecurityConfig {
 				.requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
 				.requestMatchers(HttpMethod.GET, "/api/bff/catalog/**").permitAll()
 				.requestMatchers("/api/bff/catalog/**").access(allOf(conScope, hasRole("Admin")))
+				// Tienda: sucursales, disponibilidad por farmacia y medios de pago son públicos.
+				.requestMatchers(HttpMethod.GET, "/api/bff/inventory/sucursales", "/api/bff/inventory/disponibilidad/*",
+						"/api/bff/payments/metodos").permitAll()
+				.requestMatchers(HttpMethod.POST, "/api/bff/inventory/cobertura").permitAll()
+				// El navegador vuelve desde Webpay / Mercado Pago / Khipu sin token; pagos confirma con el proveedor.
+				.requestMatchers("/api/bff/payments/retorno/**").permitAll()
+				.requestMatchers("/api/bff/gestion/**").access(allOf(conScope, hasAnyRole("Operador", "Admin")))
+				.requestMatchers("/api/bff/inventory/**").access(allOf(conScope, hasAnyRole("Operador", "Admin")))
+				.requestMatchers("/api/bff/payments/simulacion").access(allOf(conScope, hasRole("Admin")))
+				.requestMatchers("/api/bff/admin/rabbit/**").access(allOf(conScope, hasRole("Admin")))
 				.requestMatchers(HttpMethod.PUT, "/api/bff/prescriptions/*/status")
 					.access(allOf(conScope, hasAnyRole("Operador", "Admin")))
 				.requestMatchers("/api/bff/**").access(conScope)

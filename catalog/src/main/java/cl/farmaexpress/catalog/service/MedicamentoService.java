@@ -11,8 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import cl.farmaexpress.catalog.domain.Categoria;
+import cl.farmaexpress.catalog.domain.CategoriaRepository;
 import cl.farmaexpress.catalog.domain.Medicamento;
 import cl.farmaexpress.catalog.domain.MedicamentoRepository;
+import cl.farmaexpress.catalog.web.dto.MedicamentoDtos.CategoriaResponse;
 import cl.farmaexpress.catalog.web.dto.MedicamentoDtos.MedicamentoRequest;
 import cl.farmaexpress.catalog.web.dto.MedicamentoDtos.MedicamentoResponse;
 import cl.farmaexpress.catalog.web.dto.MedicamentoDtos.StockItem;
@@ -21,9 +24,22 @@ import cl.farmaexpress.catalog.web.dto.MedicamentoDtos.StockItem;
 public class MedicamentoService {
 
 	private final MedicamentoRepository repository;
+	private final CategoriaRepository categorias;
 
-	public MedicamentoService(MedicamentoRepository repository) {
+	public MedicamentoService(MedicamentoRepository repository, CategoriaRepository categorias) {
 		this.repository = repository;
+		this.categorias = categorias;
+	}
+
+	/** Categorías de la tienda con cuántos productos tiene cada una. */
+	@Transactional(readOnly = true)
+	public List<CategoriaResponse> categorias() {
+		Map<Long, Long> porCategoria = repository.findAll().stream()
+			.filter(m -> m.getCategoria() != null)
+			.collect(Collectors.groupingBy(m -> m.getCategoria().getId(), Collectors.counting()));
+		return categorias.findAllByOrderByOrdenAsc().stream()
+			.map(c -> CategoriaResponse.from(c, porCategoria.getOrDefault(c.getId(), 0L)))
+			.toList();
 	}
 
 	@Transactional(readOnly = true)
@@ -41,7 +57,10 @@ public class MedicamentoService {
 		if (repository.existsBySkuIgnoreCase(request.sku().trim())) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un medicamento con el código " + request.sku().trim() + ".");
 		}
-		Medicamento medicamento = new Medicamento(request.sku(), request.nombre(), request.precio(), request.stock());
+		// Un producto nuevo parte sin stock: se carga ingresando lotes en el inventario.
+		Medicamento medicamento = new Medicamento(request.sku(), request.nombre(), request.precio(),
+				request.stock() != null ? request.stock() : 0);
+		aplicarFicha(medicamento, request);
 		return MedicamentoResponse.from(repository.save(medicamento));
 	}
 
@@ -51,7 +70,9 @@ public class MedicamentoService {
 		if (repository.existsBySkuIgnoreCaseAndIdNot(request.sku().trim(), id)) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe otro medicamento con el código " + request.sku().trim() + ".");
 		}
-		medicamento.actualizar(request.sku(), request.nombre(), request.precio(), request.stock());
+		// El stock no se edita aquí: lo informa el inventario según sus lotes.
+		medicamento.actualizar(request.sku(), request.nombre(), request.precio(), medicamento.getStock());
+		aplicarFicha(medicamento, request);
 		return MedicamentoResponse.from(medicamento);
 	}
 
@@ -84,12 +105,33 @@ public class MedicamentoService {
 	}
 
 	/**
+	 * Stock informado por el microservicio de inventario (evento inventario.stock-cambiado).
+	 * Los productos que ya no están en el catálogo se ignoran.
+	 */
+	@Transactional
+	public void sincronizarStock(Map<Long, int[]> stockPorProducto) {
+		// Por producto: [máximo por pedido, total en todas las sucursales].
+		repository.findAllById(stockPorProducto.keySet())
+			.forEach(m -> m.fijarStock(stockPorProducto.get(m.getId())[0], stockPorProducto.get(m.getId())[1]));
+	}
+
+	/**
 	 * Elimina el medicamento del catálogo. Los pedidos ya hechos no se ven afectados: guardan una
 	 * copia del nombre y el precio. Si estaba en algún carrito, el BFF lo quita al leer el carrito.
 	 */
 	@Transactional
 	public void eliminar(Long id) {
 		repository.delete(buscar(id));
+	}
+
+	private void aplicarFicha(Medicamento medicamento, MedicamentoRequest request) {
+		Categoria categoria = request.categoriaId() == null ? null
+				: categorias.findById(request.categoriaId())
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+							"No existe la categoría " + request.categoriaId() + "."));
+		medicamento.actualizarFicha(categoria, request.descripcion(), request.laboratorio(), request.principioActivo(),
+				request.presentacion(), Boolean.TRUE.equals(request.requiereReceta()),
+				Boolean.TRUE.equals(request.bioequivalente()), request.imagenUrl());
 	}
 
 	private Medicamento buscar(Long id) {

@@ -11,6 +11,7 @@ public record FarmaexpressProperties(Cors cors, Services services) {
 	public record Cors(List<String> allowedOrigins) {
 	}
 
-	public record Services(String catalogUrl, String prescriptionsUrl) {
+	public record Services(String catalogUrl, String prescriptionsUrl, String notificationsUrl, String inventoryUrl,
+			String paymentsUrl, String rabbitAdminUrl) {
 	}
 }

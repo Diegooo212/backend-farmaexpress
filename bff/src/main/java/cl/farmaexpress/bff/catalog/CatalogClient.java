@@ -4,7 +4,6 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,13 +24,20 @@ public class CatalogClient {
 		this.client = client;
 	}
 
-	public record Medicamento(Long id, String sku, String nombre, Integer precio, Integer stock) {
-	}
+	/**
+	 * Lo que el BFF necesita de cada producto. El catálogo envía más datos (ficha, stockTotal...), que aquí
+	 * se ignoran. {@code requiereReceta}: venta bajo receta médica.
+	 */
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+	public record Medicamento(Long id, String sku, String nombre, Integer precio, Integer stock, Boolean requiereReceta) {
 
-	public record StockItem(Long id, Integer cantidad) {
-	}
+		public Medicamento(Long id, String sku, String nombre, Integer precio, Integer stock) {
+			this(id, sku, nombre, precio, stock, false);
+		}
 
-	record DescontarStock(List<StockItem> items) {
+		public boolean conReceta() {
+			return Boolean.TRUE.equals(requiereReceta);
+		}
 	}
 
 	public List<Medicamento> listar() {
@@ -39,16 +45,8 @@ public class CatalogClient {
 		});
 	}
 
-	/** Descuenta el stock de una compra; si falta stock, el catálogo responde 409 y no descuenta nada. */
-	public List<Medicamento> descontarStock(List<StockItem> items, String token) {
-		return client.post()
-			.uri(MEDICAMENTOS + "/descontar-stock")
-			.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-			.contentType(MediaType.APPLICATION_JSON)
-			.body(new DescontarStock(items))
-			.retrieve()
-			.body(new ParameterizedTypeReference<>() {
-			});
+	public ResponseEntity<byte[]> categorias() {
+		return Reenvio.reenviar(client, HttpMethod.GET, "/api/catalog/categorias", null, MediaType.APPLICATION_JSON, null);
 	}
 
 	public ResponseEntity<byte[]> reenviar(HttpMethod method, String ruta, String jsonBody, String token) {
