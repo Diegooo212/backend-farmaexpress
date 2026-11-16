@@ -3,10 +3,11 @@
 Backend de **FarmaExpress**, plataforma de dispensación y retiro de recetas médicas.
 Curso DSY1107 Desarrollo Cloud Native I (DuocUC).
 
-Seis microservicios **Spring Boot 4 (Java 21)**, cada uno con su propia base **MySQL**, que además se comunican de forma
-asíncrona con **RabbitMQ**. Van protegidos por **AWS API Gateway** y usan **Microsoft Entra ID** como IDaaS.
-Todo el sistema corre en **Docker** (`docker compose up -d --build`).
-En la nube hay 3 instancias EC2 (BFF · catalog + prescriptions · MySQL); `notifications`, `payments`, `inventory` y RabbitMQ por ahora corren solo en local.
+Nueve microservicios **Spring Boot 4 (Java 21)**, cada uno con su propia base **MySQL**, que además se comunican de forma
+asíncrona con **RabbitMQ** (flujo de los pedidos) y publican y consumen eventos en **Apache Kafka** (streaming y analítica).
+Van protegidos por **AWS API Gateway** y usan **Microsoft Entra ID** como IDaaS.
+Todo el sistema corre en **Docker** (`docker compose up -d --build`): MySQL, clúster RabbitMQ de 2 nodos, clúster Kafka
+(3 ZooKeeper + 3 brokers + Kafka UI) y los 9 microservicios. Detalle de Kafka: **[docs/KAFKA.md](docs/KAFKA.md)**.
 
 ```
 Frontend (React + MSAL) ──Bearer JWT de Entra ID──► API Gateway (autorizador JWT)
@@ -25,6 +26,10 @@ Mensajería asíncrona (RabbitMQ, exchange topic farmaexpress.eventos; cada cola
   payments ───────pago.rechazado──────────────► bff (reintentar con otro medio) · notifications
   inventory ──────inventario.stock-cambiado───► catalog (stock que ve la tienda)
   inventory ──────reserva.expirada────────────► bff (pedido EXPIRADO)
+
+Streaming (Kafka: 3 brokers, tópicos de 3 particiones y 3 réplicas; cada consumidor con reintentos y DLT):
+  bff ──────────farmaexpress.ventas (clave: pedido)──────► analytics (grupo analytics-ventas) · catalog (grupo catalog-ventas)
+  inventory ────farmaexpress.stock  (clave: producto, compactado)──► analytics (grupo analytics-stock)
 ```
 
 | Microservicio | Puerto | Responsabilidad |
@@ -34,7 +39,10 @@ Mensajería asíncrona (RabbitMQ, exchange topic farmaexpress.eventos; cada cola
 | `prescriptions` | 8082 | Recetas, archivo adjunto (foto o PDF en MySQL) e historial de estados. Publica `receta.estado-cambiado` |
 | `notifications` | 8083 | Avisos para el cliente (campana del frontend). Consume los eventos de RabbitMQ |
 | `payments` | 8084 | Pagos con **Webpay**, **Mercado Pago** y **Khipu**; un **circuit breaker** (Resilience4j) por proveedor |
-| `inventory` | 8085 | Stock por **sucursal** y **lote** con fecha de vencimiento, regla **FEFO**, reservas durante el pago y alertas de vencimiento |
+| `inventory` | 8085 | Stock por **sucursal** y **lote** con fecha de vencimiento, regla **FEFO**, reservas durante el pago y alertas de vencimiento. Publica el stock en Kafka |
+| `rabbit-admin` | 8086 | Administrador de RabbitMQ: colas, exchanges y bindings por API REST (solo Admin) |
+| `kafka-admin` | 8087 | Administrador de Kafka: brokers, tópicos, configuraciones y consumer groups (offsets y lag) por API REST (solo Admin) |
+| `analytics` | 8088 | Analítica en tiempo real: consume `farmaexpress.ventas` y `farmaexpress.stock` (ventas de hoy, más vendidos, stock bajo) |
 
 ### Checkout: cómo se compra
 
@@ -87,11 +95,12 @@ Requisito: Docker Desktop (con WSL2 en Windows).
 
 ```powershell
 copy docker.env.example .env      # una vez: completa AZURE_TENANT_ID y AZURE_API_CLIENT_ID
-docker compose up -d --build      # MySQL + RabbitMQ + los 6 microservicios
+docker compose up -d --build      # MySQL + RabbitMQ + Kafka + los 9 microservicios
 docker compose ps                 # "healthy" = /actuator/health responde UP
 ```
 
 - Desde el PC solo se llega al BFF (`http://localhost:8080`), igual que en la nube. Consola de RabbitMQ: `http://localhost:15672` (farmaexpress / farmaexpress).
+- Kafka UI: `http://localhost:8090`. Solo Kafka: `docker compose -f docker-compose.kafka.yml up -d`. Administración por consola: `docker exec farmaexpress-kafka1 bash /scripts/kafka.sh grupos` (ver [docs/KAFKA.md](docs/KAFKA.md)).
 - MySQL de Docker queda en el puerto **3307** del PC (para no chocar con un MySQL local).
 - El frontend tiene su propio `docker compose up -d --build` (nginx en `http://localhost:5173`).
 - Cada microservicio tiene su `Dockerfile` (build en dos etapas: JDK para compilar; JRE y usuario sin privilegios para ejecutar).
@@ -161,10 +170,13 @@ Base local `http://localhost:8080`. En la nube, la URL del API Gateway.
 ./mvnw verify
 ```
 
-Son 111 pruebas y usan H2 y un RabbitTemplate simulado, así que no necesitan MySQL, RabbitMQ ni internet.
+Son 166 pruebas y usan H2, un RabbitTemplate simulado y un broker Kafka embebido, así que no necesitan MySQL, RabbitMQ, Kafka ni internet.
+Las de Kafka publican eventos reales y verifican el consumo, la idempotencia, el envío al DLT de mensajes ilegibles o inválidos, las lápidas del tópico compactado y la administración de tópicos y consumer groups.
 Incluyen FEFO y lotes vencidos, reservas que expiran, el circuit breaker abriéndose y recuperándose, y el contrato con la API de Webpay. Incluyen tokens firmados de verdad con una llave de prueba, para verificar firma, `iss`, `aud`, `exp`, scope y roles.
 
 ## Despliegue en AWS
 
 - 3 EC2 (bff · microservicios · MySQL) y API Gateway: **[docs/DESPLIEGUE-AWS.md](docs/DESPLIEGUE-AWS.md)**
 - Guion de la presentación EP2: **[docs/PRESENTACION.md](docs/PRESENTACION.md)**
+- Mensajería y despliegue EP4: **[docs/DESPLIEGUE-EP4.md](docs/DESPLIEGUE-EP4.md)**
+- Kafka (EP5 y EP6): **[docs/KAFKA.md](docs/KAFKA.md)**

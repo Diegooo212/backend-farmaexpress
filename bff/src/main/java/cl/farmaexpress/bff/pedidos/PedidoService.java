@@ -31,6 +31,7 @@ import cl.farmaexpress.bff.carrito.CarritoService;
 import cl.farmaexpress.bff.catalog.CatalogClient;
 import cl.farmaexpress.bff.catalog.CatalogClient.Medicamento;
 import cl.farmaexpress.bff.eventos.PedidoEstadoCambiado;
+import cl.farmaexpress.bff.eventos.VentaRegistrada;
 import cl.farmaexpress.bff.inventory.InventoryClient;
 import cl.farmaexpress.bff.inventory.InventoryClient.ItemReserva;
 import cl.farmaexpress.bff.inventory.InventoryClient.Reserva;
@@ -285,6 +286,8 @@ public class PedidoService {
 		}
 		pedido.pagado(pagoId, metodo, detalle);
 		carrito.vaciar(pedido.getUsuarioId());
+		// Streaming: la venta confirmada se publica en Kafka (farmaexpress.ventas) después del commit.
+		eventos.publishEvent(VentaRegistrada.de(pedido, Instant.now()));
 	}
 
 	@Transactional

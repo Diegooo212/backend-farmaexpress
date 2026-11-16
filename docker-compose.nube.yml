@@ -46,6 +46,10 @@ x-entorno: &entorno
   RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
   AZURE_TENANT_ID: ${AZURE_TENANT_ID:?Define AZURE_TENANT_ID}
   AZURE_API_CLIENT_ID: ${AZURE_API_CLIENT_ID:?Define AZURE_API_CLIENT_ID}
+  # Kafka (streaming y analítica) corre con docker-compose.kafka.yml. Sin él en esta EC2, inventory no publica
+  # el stock en Kafka. Con Kafka: KAFKA_HABILITADO=true y KAFKA_BOOTSTRAP_SERVERS en el .env.
+  KAFKA_HABILITADO: ${KAFKA_HABILITADO:-false}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka1:29092,kafka2:29092,kafka3:29092}
 
 services:
   rabbitmq1:

@@ -45,6 +45,16 @@ public class RestClientsConfig {
 		return builder.clone().baseUrl(props.services().rabbitAdminUrl()).requestFactory(requestFactory()).build();
 	}
 
+	@Bean
+	RestClient kafkaAdminRestClient(RestClient.Builder builder, FarmaexpressProperties props) {
+		return builder.clone().baseUrl(props.services().kafkaAdminUrl()).requestFactory(requestFactory()).build();
+	}
+
+	@Bean
+	RestClient analyticsRestClient(RestClient.Builder builder, FarmaexpressProperties props) {
+		return builder.clone().baseUrl(props.services().analyticsUrl()).requestFactory(requestFactory()).build();
+	}
+
 	private static JdkClientHttpRequestFactory requestFactory() {
 		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(CONEXION).build();
 		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);

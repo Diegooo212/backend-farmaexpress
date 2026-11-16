@@ -1,6 +1,6 @@
 @echo off
-REM Levanta los 6 microservicios de FarmaExpress, cada uno en su propia ventana.
-REM RabbitMQ (mensajes entre microservicios) va aparte, con Docker:  docker compose up -d rabbitmq
+REM Levanta los 9 microservicios de FarmaExpress, cada uno en su propia ventana.
+REM RabbitMQ y Kafka van aparte, con Docker:  docker compose up -d rabbitmq1 rabbitmq2  y  docker compose -f docker-compose.kafka.yml up -d
 REM Todo en contenedores (MySQL incluido):  docker compose up -d --build
 REM   .\iniciar-backend.cmd        -> usa MySQL (localhost:3306, usuario root). Pide la contraseña.
 REM   .\iniciar-backend.cmd h2     -> base en memoria, sin MySQL (los datos se pierden al cerrar)
@@ -62,8 +62,13 @@ start "FarmaExpress prescriptions :8082" cmd /k mvnw.cmd -pl prescriptions sprin
 start "FarmaExpress notifications :8083" cmd /k mvnw.cmd -pl notifications spring-boot:run %ARGS%
 start "FarmaExpress payments :8084" cmd /k mvnw.cmd -pl payments spring-boot:run %ARGS%
 start "FarmaExpress inventory :8085" cmd /k mvnw.cmd -pl inventory spring-boot:run %ARGS%
+start "FarmaExpress rabbit-admin :8086" cmd /k mvnw.cmd -pl rabbit-admin spring-boot:run
+start "FarmaExpress kafka-admin :8087" cmd /k mvnw.cmd -pl kafka-admin spring-boot:run
+start "FarmaExpress analytics :8088" cmd /k mvnw.cmd -pl analytics spring-boot:run %ARGS%
 start "FarmaExpress bff :8080" cmd /k mvnw.cmd -pl bff spring-boot:run %ARGS%
 
-echo Iniciando bff (8080), catalog (8081), prescriptions (8082), notifications (8083), payments (8084) e inventory (8085)...
-echo Pagos, avisos y stock usan RabbitMQ: si no esta corriendo, ejecuta  docker compose up -d rabbitmq  (consola: http://localhost:15672)
+echo Iniciando bff (8080), catalog (8081), prescriptions (8082), notifications (8083), payments (8084), inventory (8085),
+echo rabbit-admin (8086), kafka-admin (8087) y analytics (8088)...
+echo Pagos, avisos y stock usan RabbitMQ:  docker compose up -d rabbitmq1 rabbitmq2  (consola: http://localhost:15672)
+echo Ventas y analitica usan Kafka:  docker compose -f docker-compose.kafka.yml up -d  (Kafka UI: http://localhost:8090)
 endlocal

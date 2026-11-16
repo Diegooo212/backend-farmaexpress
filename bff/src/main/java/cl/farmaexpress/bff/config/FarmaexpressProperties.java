@@ -12,6 +12,6 @@ public record FarmaexpressProperties(Cors cors, Services services) {
 	}
 
 	public record Services(String catalogUrl, String prescriptionsUrl, String notificationsUrl, String inventoryUrl,
-			String paymentsUrl, String rabbitAdminUrl) {
+			String paymentsUrl, String rabbitAdminUrl, String kafkaAdminUrl, String analyticsUrl) {
 	}
 }

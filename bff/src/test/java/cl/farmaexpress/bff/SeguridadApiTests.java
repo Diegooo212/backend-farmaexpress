@@ -112,6 +112,22 @@ class SeguridadApiTests {
 	}
 
 	@Test
+	void soloElAdministradorEntraAlAdministradorDeKafka() throws Exception {
+		mvc.perform(get("/api/bff/admin/kafka/topics")).andExpect(status().isUnauthorized());
+		mvc.perform(conToken(get("/api/bff/admin/kafka/topics"), Map.of("oid", "oid-cliente")))
+			.andExpect(status().isForbidden());
+		mvc.perform(conToken(post("/api/bff/admin/kafka/topics"), Map.of("oid", "oid-op", "roles", List.of("Operador"))))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void laAnaliticaEsSoloParaElPersonal() throws Exception {
+		mvc.perform(get("/api/bff/analytics/tablero")).andExpect(status().isUnauthorized());
+		mvc.perform(conToken(get("/api/bff/analytics/tablero"), Map.of("oid", "oid-cliente")))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
 	void sinTokenDa401ConMensaje() throws Exception {
 		mvc.perform(get("/api/bff/auth/me"))
 			.andExpect(status().isUnauthorized())

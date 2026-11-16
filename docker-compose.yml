@@ -1,7 +1,8 @@
 # FarmaExpress: todo el backend en contenedores.
 #
 #   copy docker.env.example .env        (una vez; completa AZURE_TENANT_ID y AZURE_API_CLIENT_ID)
-#   docker compose up -d --build        -> MySQL + clúster RabbitMQ (2 nodos) + los 7 microservicios
+#   docker compose up -d --build        -> MySQL + clúster RabbitMQ (2 nodos) + clúster Kafka (3 ZooKeeper,
+#                                          3 brokers, Kafka UI) + los 9 microservicios
 #   docker compose ps                   -> estado (healthy = /actuator/health responde UP)
 #   docker compose logs -f payments     -> logs de un servicio
 #   docker compose down                 -> detener (los datos quedan en los volúmenes)
@@ -12,8 +13,13 @@
 #
 # Igual que en la nube, desde fuera solo se llega al BFF (8080).
 # Consola de RabbitMQ: http://localhost:15672 (nodo 1) y http://localhost:15673 (nodo 2).
+# Kafka UI: http://localhost:8090 (la plataforma Kafka está en docker-compose.kafka.yml, incluido aquí).
 # MySQL queda en el puerto 3307 del PC (para no chocar con un MySQL local en el 3306).
 name: farmaexpress
+
+# Plataforma de streaming: 3 nodos ZooKeeper, 3 brokers Kafka, creación de tópicos y Kafka UI.
+include:
+  - docker-compose.kafka.yml
 
 x-microservicio: &microservicio
   restart: unless-stopped
@@ -25,6 +31,20 @@ x-microservicio: &microservicio
       condition: service_healthy
     rabbitmq2:
       condition: service_healthy
+
+# Microservicios que además publican o consumen eventos en Kafka: esperan a que los tópicos estén creados.
+x-microservicio-kafka: &microservicio-kafka
+  restart: unless-stopped
+  mem_limit: 512m
+  depends_on:
+    mysql:
+      condition: service_healthy
+    rabbitmq1:
+      condition: service_healthy
+    rabbitmq2:
+      condition: service_healthy
+    kafka-init:
+      condition: service_completed_successfully
 
 # Nodo de RabbitMQ: mismo secreto de Erlang (cookie) en ambos para que puedan unirse en un clúster.
 x-rabbitmq: &rabbitmq
@@ -51,6 +71,8 @@ x-entorno: &entorno
   RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-farmaexpress}
   AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
   AZURE_API_CLIENT_ID: ${AZURE_API_CLIENT_ID:-}
+  # Los 3 brokers de Kafka (listener interno de la red de Docker).
+  KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
 
 services:
   mysql:
@@ -93,7 +115,7 @@ services:
       - rabbitmq2-data:/var/lib/rabbitmq
 
   catalog:
-    <<: *microservicio
+    <<: *microservicio-kafka
     build: ./catalog
     image: farmaexpress/catalog
     container_name: farmaexpress-catalog
@@ -117,7 +139,7 @@ services:
       <<: *entorno
 
   inventory:
-    <<: *microservicio
+    <<: *microservicio-kafka
     build: ./inventory
     image: farmaexpress/inventory
     container_name: farmaexpress-inventory
@@ -153,8 +175,29 @@ services:
       <<: *entorno
       RABBITMQ_MANAGEMENT_URL: http://rabbitmq1:15672
 
+  # Administrador de Kafka: tópicos, configuraciones y consumer groups por API REST (solo Admin).
+  kafka-admin:
+    <<: *microservicio-kafka
+    build: ./kafka-admin
+    image: farmaexpress/kafka-admin
+    container_name: farmaexpress-kafka-admin
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *entorno
+
+  # Analítica en tiempo real: consume farmaexpress.ventas y farmaexpress.stock.
+  analytics:
+    <<: *microservicio-kafka
+    build: ./analytics
+    image: farmaexpress/analytics
+    container_name: farmaexpress-analytics
+    environment:
+      <<: *entorno
+
   bff:
-    <<: *microservicio
+    <<: *microservicio-kafka
     build: ./bff
     image: farmaexpress/bff
     container_name: farmaexpress-bff
@@ -167,6 +210,8 @@ services:
       NOTIFICATIONS_URL: http://notifications:8083
       PAYMENTS_URL: http://payments:8084
       RABBIT_ADMIN_URL: http://rabbit-admin:8086
+      KAFKA_ADMIN_URL: http://kafka-admin:8087
+      ANALYTICS_URL: http://analytics:8088
       INVENTORY_URL: http://inventory:8085
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
 

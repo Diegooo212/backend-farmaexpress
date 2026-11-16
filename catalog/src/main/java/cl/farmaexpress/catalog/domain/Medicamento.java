@@ -35,6 +35,10 @@ public class Medicamento {
 	@Column(name = "stock_total", nullable = false)
 	private Integer stockTotal = 0;
 
+	/** Unidades vendidas (pagadas), según el tópico Kafka farmaexpress.ventas. */
+	@Column(nullable = false)
+	private Integer vendidos = 0;
+
 	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "categoria_id")
 	private Categoria categoria;
@@ -106,6 +110,10 @@ public class Medicamento {
 
 	public Integer getStockTotal() {
 		return stockTotal;
+	}
+
+	public Integer getVendidos() {
+		return vendidos;
 	}
 
 	public boolean tieneStock(int cantidad) {

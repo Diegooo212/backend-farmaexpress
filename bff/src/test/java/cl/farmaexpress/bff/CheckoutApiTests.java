@@ -1,5 +1,6 @@
 package cl.farmaexpress.bff;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
@@ -36,6 +37,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -49,6 +52,7 @@ import com.jayway.jsonpath.JsonPath;
 import cl.farmaexpress.bff.catalog.CatalogClient;
 import cl.farmaexpress.bff.catalog.CatalogClient.Medicamento;
 import cl.farmaexpress.bff.eventos.EventosListener;
+import cl.farmaexpress.bff.eventos.VentaRegistrada;
 import cl.farmaexpress.bff.eventos.EventosListener.PagoAprobado;
 import cl.farmaexpress.bff.eventos.EventosListener.PagoRechazado;
 import cl.farmaexpress.bff.eventos.EventosListener.ReservaExpirada;
@@ -69,6 +73,7 @@ import cl.farmaexpress.bff.prescriptions.PrescriptionsClient.Receta;
 @AutoConfigureMockMvc
 @ActiveProfiles({ "h2", "test" })
 @Transactional
+@RecordApplicationEvents
 class CheckoutApiTests {
 
 	private static final Medicamento PARACETAMOL = new Medicamento(1L, "MED-001", "Paracetamol 500mg", 1990, 120);
@@ -82,6 +87,9 @@ class CheckoutApiTests {
 
 	@Autowired
 	EventosListener eventos;
+
+	@Autowired
+	ApplicationEvents publicados;
 
 	@MockitoBean
 	CatalogClient catalog;
@@ -166,6 +174,15 @@ class CheckoutApiTests {
 			.andExpect(jsonPath("$.metodoPago").value("WEBPAY"));
 		mvc.perform(get("/api/bff/cart").with(DIEGO)).andExpect(jsonPath("$.items", hasSize(0)));
 		mvc.perform(get("/api/bff/orders").with(DIEGO)).andExpect(jsonPath("$", hasSize(1)));
+
+		// La venta confirmada se publica para Kafka (farmaexpress.ventas) con lo que necesita la analítica.
+		VentaRegistrada venta = publicados.stream(VentaRegistrada.class).findFirst().orElseThrow();
+		assertThat(venta.pedidoId()).isEqualTo(id);
+		assertThat(venta.version()).isEqualTo(VentaRegistrada.VERSION);
+		assertThat(venta.metodoPago()).isEqualTo("WEBPAY");
+		assertThat(venta.items()).singleElement().satisfies(i -> assertThat(i.cantidad()).isEqualTo(2));
+		assertThat(venta.total()).isEqualTo(
+				venta.items().stream().mapToInt(i -> i.cantidad() * i.precioUnitario()).sum() + venta.costoDespacho());
 	}
 
 	@Test

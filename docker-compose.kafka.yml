@@ -1,0 +1,204 @@
+# FarmaExpress: plataforma de streaming con Apache Kafka.
+#
+#   3 nodos ZooKeeper  -> ensamble que guarda los metadatos del clúster y elige al broker controlador.
+#                         Con 3 nodos hay quórum (mayoría = 2): el ensamble sigue funcionando si cae uno.
+#   3 brokers Kafka    -> guardan las particiones. Cada tópico usa 3 particiones y 3 réplicas: cada broker
+#                         es líder de una partición y guarda copia de las otras dos (tolera la caída de un broker).
+#   kafka-init         -> crea los tópicos de FarmaExpress con su configuración (kafka/kafka.sh) y termina.
+#   Kafka UI           -> consola web para administrar brokers, tópicos, particiones, mensajes y consumidores.
+#
+# Se levanta junto al resto del backend (docker-compose.yml lo incluye) o por separado:
+#   docker compose -f docker-compose.kafka.yml up -d
+#   docker compose -f docker-compose.kafka.yml ps
+#   docker exec farmaexpress-kafka1 bash /scripts/kafka.sh describir        -> tópicos, líderes y réplicas
+#   docker exec farmaexpress-kafka1 bash /scripts/kafka.sh grupos           -> consumer groups con offsets y lag
+#
+# Kafka UI: http://localhost:8090
+# Desde el PC (microservicios fuera de Docker): localhost:9092, localhost:9093 y localhost:9094.
+# Entre contenedores: kafka1:29092, kafka2:29092 y kafka3:29092.
+#
+# Se usa Confluent Platform 7.7 (Apache Kafka 3.7): la última línea que funciona con ZooKeeper
+# (Kafka 4 solo funciona en modo KRaft).
+name: farmaexpress
+
+x-zookeeper: &zookeeper
+  image: confluentinc/cp-zookeeper:7.7.1
+  environment: &entorno-zookeeper
+    ZOOKEEPER_CLIENT_PORT: 2181
+    ZOOKEEPER_TICK_TIME: 2000
+    # Un seguidor tiene initLimit / syncLimit ticks para conectarse y mantenerse al día con el líder.
+    ZOOKEEPER_INIT_LIMIT: 5
+    ZOOKEEPER_SYNC_LIMIT: 2
+    # Los 3 nodos del ensamble: puerto 2888 para replicar y 3888 para elegir al líder.
+    ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
+    KAFKA_HEAP_OPTS: -Xms64m -Xmx128m
+    KAFKA_OPTS: -Dzookeeper.4lw.commands.whitelist=ruok,srvr,mntr
+  # Sano cuando el nodo forma parte del quórum ("Mode: leader" o "Mode: follower").
+  healthcheck:
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/2181 && echo srvr >&3 && grep -q Mode <&3"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+  restart: unless-stopped
+  mem_limit: 256m
+
+x-kafka: &kafka
+  image: confluentinc/cp-kafka:7.7.1
+  depends_on:
+    zookeeper1:
+      condition: service_healthy
+    zookeeper2:
+      condition: service_healthy
+    zookeeper3:
+      condition: service_healthy
+  environment: &entorno-kafka
+    KAFKA_ZOOKEEPER_CONNECT: zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+    # Dos listeners: INTERNO para los contenedores (kafkaN:29092) y EXTERNO para el PC (localhost:909X).
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNO:PLAINTEXT,EXTERNO:PLAINTEXT
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNO
+    # Valores por defecto del clúster, alineados con los tópicos de FarmaExpress.
+    KAFKA_NUM_PARTITIONS: 3
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    # Con acks=all una escritura se confirma cuando al menos 2 réplicas la tienen: se tolera perder un broker.
+    KAFKA_MIN_INSYNC_REPLICAS: 2
+    # Tópicos internos (offsets de los consumer groups y transacciones) también replicados en los 3 brokers.
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    # Los tópicos se crean de forma explícita (kafka-init y los microservicios), nunca por un error de tipeo.
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    # Nunca se elige como líder una réplica desactualizada (se prefiere esperar a perder datos).
+    KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+    KAFKA_LOG_RETENTION_HOURS: 168
+    KAFKA_HEAP_OPTS: -Xms256m -Xmx384m
+  healthcheck:
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/29092"]
+    interval: 10s
+    timeout: 5s
+    retries: 18
+  restart: unless-stopped
+  mem_limit: 768m
+
+services:
+  zookeeper1:
+    <<: *zookeeper
+    hostname: zookeeper1
+    container_name: farmaexpress-zookeeper1
+    environment:
+      <<: *entorno-zookeeper
+      ZOOKEEPER_SERVER_ID: 1
+    volumes:
+      - zookeeper1-data:/var/lib/zookeeper/data
+      - zookeeper1-log:/var/lib/zookeeper/log
+
+  zookeeper2:
+    <<: *zookeeper
+    hostname: zookeeper2
+    container_name: farmaexpress-zookeeper2
+    environment:
+      <<: *entorno-zookeeper
+      ZOOKEEPER_SERVER_ID: 2
+    volumes:
+      - zookeeper2-data:/var/lib/zookeeper/data
+      - zookeeper2-log:/var/lib/zookeeper/log
+
+  zookeeper3:
+    <<: *zookeeper
+    hostname: zookeeper3
+    container_name: farmaexpress-zookeeper3
+    environment:
+      <<: *entorno-zookeeper
+      ZOOKEEPER_SERVER_ID: 3
+    volumes:
+      - zookeeper3-data:/var/lib/zookeeper/data
+      - zookeeper3-log:/var/lib/zookeeper/log
+
+  kafka1:
+    <<: *kafka
+    hostname: kafka1
+    container_name: farmaexpress-kafka1
+    ports:
+      - "9092:9092"
+    environment:
+      <<: *entorno-kafka
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENERS: INTERNO://0.0.0.0:29092,EXTERNO://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka1:29092,EXTERNO://localhost:9092
+    volumes:
+      - kafka1-data:/var/lib/kafka/data
+      - ./kafka:/scripts:ro
+
+  kafka2:
+    <<: *kafka
+    hostname: kafka2
+    container_name: farmaexpress-kafka2
+    ports:
+      - "9093:9093"
+    environment:
+      <<: *entorno-kafka
+      KAFKA_BROKER_ID: 2
+      KAFKA_LISTENERS: INTERNO://0.0.0.0:29092,EXTERNO://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka2:29092,EXTERNO://localhost:9093
+    volumes:
+      - kafka2-data:/var/lib/kafka/data
+      - ./kafka:/scripts:ro
+
+  kafka3:
+    <<: *kafka
+    hostname: kafka3
+    container_name: farmaexpress-kafka3
+    ports:
+      - "9094:9094"
+    environment:
+      <<: *entorno-kafka
+      KAFKA_BROKER_ID: 3
+      KAFKA_LISTENERS: INTERNO://0.0.0.0:29092,EXTERNO://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka3:29092,EXTERNO://localhost:9094
+    volumes:
+      - kafka3-data:/var/lib/kafka/data
+      - ./kafka:/scripts:ro
+
+  # Crea (si no existen) los tópicos de FarmaExpress con sus particiones, réplicas y políticas, y termina.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: farmaexpress-kafka-init
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP: kafka1:29092,kafka2:29092,kafka3:29092
+    volumes:
+      - ./kafka:/scripts:ro
+    command: ["bash", "/scripts/kafka.sh", "crear-topicos"]
+    restart: "no"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: farmaexpress-kafka-ui
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: farmaexpress
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+      # Permite agregar o editar clústeres desde la misma consola.
+      DYNAMIC_CONFIG_ENABLED: "true"
+    restart: unless-stopped
+    mem_limit: 512m
+
+volumes:
+  zookeeper1-data:
+  zookeeper1-log:
+  zookeeper2-data:
+  zookeeper2-log:
+  zookeeper3-data:
+  zookeeper3-log:
+  kafka1-data:
+  kafka2-data:
+  kafka3-data:

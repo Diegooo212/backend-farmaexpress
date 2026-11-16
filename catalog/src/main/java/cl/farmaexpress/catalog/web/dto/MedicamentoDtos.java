@@ -48,14 +48,16 @@ public final class MedicamentoDtos {
 
 	public record MedicamentoResponse(Long id, String sku, String nombre, Integer precio, Integer stock, Integer stockTotal,
 			Long categoriaId, String categoria, String categoriaSlug, String descripcion, String laboratorio,
-			String principioActivo, String presentacion, boolean requiereReceta, boolean bioequivalente, String imagenUrl) {
+			String principioActivo, String presentacion, boolean requiereReceta, boolean bioequivalente, String imagenUrl,
+			int vendidos) {
 
 		public static MedicamentoResponse from(Medicamento m) {
 			Categoria c = m.getCategoria();
 			return new MedicamentoResponse(m.getId(), m.getSku(), m.getNombre(), m.getPrecio(), m.getStock(),
 					m.getStockTotal(), c != null ? c.getId() : null, c != null ? c.getNombre() : null,
 					c != null ? c.getSlug() : null, m.getDescripcion(), m.getLaboratorio(), m.getPrincipioActivo(),
-					m.getPresentacion(), m.isRequiereReceta(), m.isBioequivalente(), m.getImagenUrl());
+					m.getPresentacion(), m.isRequiereReceta(), m.isBioequivalente(), m.getImagenUrl(),
+					m.getVendidos() == null ? 0 : m.getVendidos());
 		}
 	}
 

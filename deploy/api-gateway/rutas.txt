@@ -67,3 +67,12 @@ PUT    /api/bff/notifications/leidas                    protegida
 GET    /api/bff/admin/rabbit/{proxy+}                   protegida
 POST   /api/bff/admin/rabbit/{proxy+}                   protegida
 DELETE /api/bff/admin/rabbit/{proxy+}                   protegida
+
+# Administrador de Kafka (solo Admin): tópicos, configuraciones y consumer groups
+GET    /api/bff/admin/kafka/{proxy+}                    protegida
+POST   /api/bff/admin/kafka/{proxy+}                    protegida
+PUT    /api/bff/admin/kafka/{proxy+}                    protegida
+DELETE /api/bff/admin/kafka/{proxy+}                    protegida
+
+# Analítica en tiempo real (Operador y Admin), alimentada por los tópicos Kafka
+GET    /api/bff/analytics/{proxy+}                      protegida

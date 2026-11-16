@@ -55,6 +55,10 @@ AZURE_API_CLIENT_ID=CAMBIAR
 RABBITMQ_ADDRESSES=CAMBIAR_IP_PRIVADA_MENSAJERIA:5672,CAMBIAR_IP_PRIVADA_MENSAJERIA:5673
 RABBITMQ_USER=farmaexpress
 RABBITMQ_PASSWORD=CAMBIAR
+
+# Kafka (streaming y analítica). Sin un clúster Kafka en la nube se deja en false: el BFF no publica ventas
+# y el catálogo no las consume. Con Kafka: KAFKA_HABILITADO=true y KAFKA_BOOTSTRAP_SERVERS=<ip>:9092,...
+KAFKA_HABILITADO=false
 ENV
     if [ "$ROL" = "bff" ]; then
       cat <<'ENV'

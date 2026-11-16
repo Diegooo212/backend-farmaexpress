@@ -54,6 +54,8 @@ public class SecurityConfig {
 				.requestMatchers("/api/bff/inventory/**").access(allOf(conScope, hasAnyRole("Operador", "Admin")))
 				.requestMatchers("/api/bff/payments/simulacion").access(allOf(conScope, hasRole("Admin")))
 				.requestMatchers("/api/bff/admin/rabbit/**").access(allOf(conScope, hasRole("Admin")))
+				.requestMatchers("/api/bff/admin/kafka/**").access(allOf(conScope, hasRole("Admin")))
+				.requestMatchers("/api/bff/analytics/**").access(allOf(conScope, hasAnyRole("Operador", "Admin")))
 				.requestMatchers(HttpMethod.PUT, "/api/bff/prescriptions/*/status")
 					.access(allOf(conScope, hasAnyRole("Operador", "Admin")))
 				.requestMatchers("/api/bff/**").access(conScope)
