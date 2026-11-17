@@ -1,0 +1,58 @@
+# FarmaExpress en AWS: EC2 #5 "farmaexpress-kafka".
+#
+# Levanta con docker compose la plataforma de streaming (docker-compose.kafka.yml: 3 ZooKeeper, 3 brokers,
+# creación de tópicos y Kafka UI) y los dos microservicios que viven de Kafka: analytics y kafka-admin.
+# La base de datos es la EC2 farmaexpress-db (MySQL); el BFF, catalog e inventory siguen en sus EC2 y se
+# conectan a los brokers por la IP privada de esta EC2.
+#
+#   cp deploy/ec2/kafka.env.example .env        (una vez; completa los CAMBIAR)
+#   docker compose -f docker-compose.kafka-nube.yml up -d --build
+#   docker compose -f docker-compose.kafka-nube.yml ps
+#   docker exec farmaexpress-kafka1 bash /scripts/kafka.sh describir
+#
+#   EC2 bff / microservicios / mensajeria ──► <IP privada>:9092, :9093, :9094 (brokers 1, 2 y 3)
+#   EC2 bff ──HTTP──► :8087 kafka-admin · :8088 analytics
+#   Kafka UI: http://<IP pública de esta EC2>:8090
+name: farmaexpress
+
+include:
+  - docker-compose.kafka.yml
+
+x-microservicio: &microservicio
+  restart: unless-stopped
+  mem_limit: 512m
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+
+x-entorno: &entorno
+  DB_HOST: ${DB_HOST:?Define DB_HOST con la IP privada de farmaexpress-db}
+  DB_USER: ${DB_USER:-farmaexpress}
+  DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD}
+  # Los microservicios de esta EC2 llegan a los brokers por la red interna de Docker.
+  KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+  AZURE_TENANT_ID: ${AZURE_TENANT_ID:?Define AZURE_TENANT_ID}
+  AZURE_API_CLIENT_ID: ${AZURE_API_CLIENT_ID:?Define AZURE_API_CLIENT_ID}
+
+services:
+  # Analítica en tiempo real: consume farmaexpress.ventas y farmaexpress.stock.
+  analytics:
+    <<: *microservicio
+    build: ./analytics
+    image: farmaexpress/analytics
+    container_name: farmaexpress-analytics
+    ports:
+      - "8088:8088"
+    environment:
+      <<: *entorno
+
+  # Administrador de Kafka: tópicos, configuraciones y consumer groups por API REST (solo Admin).
+  kafka-admin:
+    <<: *microservicio
+    build: ./kafka-admin
+    image: farmaexpress/kafka-admin
+    container_name: farmaexpress-kafka-admin
+    ports:
+      - "8087:8087"
+    environment:
+      <<: *entorno

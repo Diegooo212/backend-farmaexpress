@@ -15,6 +15,7 @@
 #
 # Kafka UI: http://localhost:8090
 # Desde el PC (microservicios fuera de Docker): localhost:9092, localhost:9093 y localhost:9094.
+# En la nube, KAFKA_HOST = IP privada de la EC2 farmaexpress-kafka: las otras EC2 usan <IP>:9092,9093,9094.
 # Entre contenedores: kafka1:29092, kafka2:29092 y kafka3:29092.
 #
 # Se usa Confluent Platform 7.7 (Apache Kafka 3.7): la última línea que funciona con ZooKeeper
@@ -53,7 +54,8 @@ x-kafka: &kafka
       condition: service_healthy
   environment: &entorno-kafka
     KAFKA_ZOOKEEPER_CONNECT: zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
-    # Dos listeners: INTERNO para los contenedores (kafkaN:29092) y EXTERNO para el PC (localhost:909X).
+    # Dos listeners: INTERNO para los contenedores (kafkaN:29092) y EXTERNO para el PC o las otras EC2
+    # (KAFKA_HOST:909X; KAFKA_HOST vale localhost en el PC y la IP privada de la EC2 en la nube).
     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNO:PLAINTEXT,EXTERNO:PLAINTEXT
     KAFKA_INTER_BROKER_LISTENER_NAME: INTERNO
     # Valores por defecto del clúster, alineados con los tópicos de FarmaExpress.
@@ -123,7 +125,7 @@ services:
       <<: *entorno-kafka
       KAFKA_BROKER_ID: 1
       KAFKA_LISTENERS: INTERNO://0.0.0.0:29092,EXTERNO://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka1:29092,EXTERNO://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka1:29092,EXTERNO://${KAFKA_HOST:-localhost}:9092
     volumes:
       - kafka1-data:/var/lib/kafka/data
       - ./kafka:/scripts:ro
@@ -138,7 +140,7 @@ services:
       <<: *entorno-kafka
       KAFKA_BROKER_ID: 2
       KAFKA_LISTENERS: INTERNO://0.0.0.0:29092,EXTERNO://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka2:29092,EXTERNO://localhost:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka2:29092,EXTERNO://${KAFKA_HOST:-localhost}:9093
     volumes:
       - kafka2-data:/var/lib/kafka/data
       - ./kafka:/scripts:ro
@@ -153,7 +155,7 @@ services:
       <<: *entorno-kafka
       KAFKA_BROKER_ID: 3
       KAFKA_LISTENERS: INTERNO://0.0.0.0:29092,EXTERNO://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka3:29092,EXTERNO://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka3:29092,EXTERNO://${KAFKA_HOST:-localhost}:9094
     volumes:
       - kafka3-data:/var/lib/kafka/data
       - ./kafka:/scripts:ro

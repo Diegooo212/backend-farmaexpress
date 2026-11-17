@@ -56,9 +56,10 @@ RABBITMQ_ADDRESSES=CAMBIAR_IP_PRIVADA_MENSAJERIA:5672,CAMBIAR_IP_PRIVADA_MENSAJE
 RABBITMQ_USER=farmaexpress
 RABBITMQ_PASSWORD=CAMBIAR
 
-# Kafka (streaming y analítica). Sin un clúster Kafka en la nube se deja en false: el BFF no publica ventas
-# y el catálogo no las consume. Con Kafka: KAFKA_HABILITADO=true y KAFKA_BOOTSTRAP_SERVERS=<ip>:9092,...
+# Kafka (streaming y analítica): IP PRIVADA de la EC2 farmaexpress-kafka (brokers 1, 2 y 3).
+# Sin la EC2 de Kafka, dejar KAFKA_HABILITADO=false (el BFF no publica ventas y el catálogo no las consume).
 KAFKA_HABILITADO=false
+#KAFKA_BOOTSTRAP_SERVERS=CAMBIAR_IP_PRIVADA_KAFKA:9092,CAMBIAR_IP_PRIVADA_KAFKA:9093,CAMBIAR_IP_PRIVADA_KAFKA:9094
 ENV
     if [ "$ROL" = "bff" ]; then
       cat <<'ENV'
@@ -72,6 +73,10 @@ NOTIFICATIONS_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8083
 PAYMENTS_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8084
 INVENTORY_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8085
 RABBIT_ADMIN_URL=http://CAMBIAR_IP_PRIVADA_MENSAJERIA:8086
+
+# IP PRIVADA de la EC2 farmaexpress-kafka (docker-compose.kafka-nube.yml)
+#KAFKA_ADMIN_URL=http://CAMBIAR_IP_PRIVADA_KAFKA:8087
+#ANALYTICS_URL=http://CAMBIAR_IP_PRIVADA_KAFKA:8088
 
 # Orígenes del frontend que pueden llamar al BFF (frontend local de Vite)
 CORS_ORIGINS=http://localhost:5173

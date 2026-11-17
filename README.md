@@ -179,4 +179,4 @@ Incluyen FEFO y lotes vencidos, reservas que expiran, el circuit breaker abrién
 - 3 EC2 (bff · microservicios · MySQL) y API Gateway: **[docs/DESPLIEGUE-AWS.md](docs/DESPLIEGUE-AWS.md)**
 - Guion de la presentación EP2: **[docs/PRESENTACION.md](docs/PRESENTACION.md)**
 - Mensajería y despliegue EP4: **[docs/DESPLIEGUE-EP4.md](docs/DESPLIEGUE-EP4.md)**
-- Kafka (EP5 y EP6): **[docs/KAFKA.md](docs/KAFKA.md)**
+- Kafka (EP5 y EP6): **[docs/KAFKA.md](docs/KAFKA.md)** · despliegue en la 5ª EC2: **[docs/DESPLIEGUE-KAFKA.md](docs/DESPLIEGUE-KAFKA.md)**
